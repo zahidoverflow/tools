@@ -193,9 +193,9 @@ append_safe() {
 cleanup_on_exit() {
     local exit_code=$?
     if [ $exit_code -ne 0 ]; then
-        if [ -f "$OUT" ]; then
-            log_info "Cleaning up incomplete file due to error..."
-            rm -f "$OUT" 2>/dev/null
+        if [ -d "$OUTPUT_DIR" ]; then
+            log_info "Cleaning up incomplete analysis due to error..."
+            rm -rf "$OUTPUT_DIR" 2>/dev/null
         fi
         
         # Ensure log file is created with final status
@@ -330,10 +330,11 @@ fi
 DEVICE_FILE="$BASE_OUT/01-device-info.md"
 KERNEL_FILE="$BASE_OUT/02-kernel-root.md"
 BOOT_FILE="$BASE_OUT/03-boot-security.md"
-HARDWARE_FILE="$BASE_OUT/04-hardware.md"
-STORAGE_FILE="$BASE_OUT/05-storage.md"
-SERVICES_FILE="$BASE_OUT/06-services.md"
-SOFTWARE_FILE="$BASE_OUT/07-software.md"
+ROOT_MODULES_FILE="$BASE_OUT/04-root-modules.md"
+HARDWARE_FILE="$BASE_OUT/05-hardware.md"
+STORAGE_FILE="$BASE_OUT/06-storage.md"
+SERVICES_FILE="$BASE_OUT/07-services.md"
+SOFTWARE_FILE="$BASE_OUT/08-software.md"
 SUMMARY_FILE="$BASE_OUT/00-summary.md"
 LOG_OUT="$BASE_OUT/$LOG_FILE"
 
@@ -353,7 +354,7 @@ if ! append_safe "# Android Device Analysis Summary" "$SUMMARY_FILE" "Summary"; 
 fi
 append_safe "" "$SUMMARY_FILE" "Summary"
 append_safe "**Generated:** $(date 2>/dev/null || echo 'Date unavailable')" "$SUMMARY_FILE" "Summary"
-append_safe "**Export Tool:** Speccy v4.0" "$SUMMARY_FILE" "Summary"
+append_safe "**Export Tool:** Speccy v4.1" "$SUMMARY_FILE" "Summary"
 append_safe "**Analysis ID:** ${DATE_STR}" "$SUMMARY_FILE" "Summary"
 append_safe "" "$SUMMARY_FILE" "Summary"
 append_safe "## File Structure" "$SUMMARY_FILE" "Summary"
@@ -363,10 +364,11 @@ append_safe "|------|-------------|" "$SUMMARY_FILE" "Summary"
 append_safe "| \`01-device-info.md\` | Device specifications and build information |" "$SUMMARY_FILE" "Summary"
 append_safe "| \`02-kernel-root.md\` | Kernel version and root management details |" "$SUMMARY_FILE" "Summary"
 append_safe "| \`03-boot-security.md\` | Boot state and security verification |" "$SUMMARY_FILE" "Summary"
-append_safe "| \`04-hardware.md\` | CPU, memory, and hardware configuration |" "$SUMMARY_FILE" "Summary"
-append_safe "| \`05-storage.md\` | Storage, partitions, and file systems |" "$SUMMARY_FILE" "Summary"
-append_safe "| \`06-services.md\` | System services and hardware interfaces |" "$SUMMARY_FILE" "Summary"
-append_safe "| \`07-software.md\` | Installed packages and system software |" "$SUMMARY_FILE" "Summary"
+append_safe "| \`04-root-modules.md\` | Root modules, configurations, and settings |" "$SUMMARY_FILE" "Summary"
+append_safe "| \`05-hardware.md\` | CPU, memory, and hardware configuration |" "$SUMMARY_FILE" "Summary"
+append_safe "| \`06-storage.md\` | Storage, partitions, and file systems |" "$SUMMARY_FILE" "Summary"
+append_safe "| \`07-services.md\` | System services and hardware interfaces |" "$SUMMARY_FILE" "Summary"
+append_safe "| \`08-software.md\` | Installed packages and system software |" "$SUMMARY_FILE" "Summary"
 append_safe "| \`export.log\` | Export process log and error details |" "$SUMMARY_FILE" "Summary"
 append_safe "" "$SUMMARY_FILE" "Summary"
 
@@ -458,11 +460,151 @@ if [ -f "/data/adb/magisk/magisk" ] || [ -f "/data/adb/magisk/magisk64" ] || [ -
     else
         ROOT_DETAILS="Magisk files detected but command not in PATH"
     fi
-    # Check modules
+    
+    # Comprehensive Magisk module analysis
     if [ -d "/data/adb/modules" ]; then
         MODULE_COUNT=$(ls -1 /data/adb/modules 2>/dev/null | wc -l)
         ROOT_DETAILS="$ROOT_DETAILS - $MODULE_COUNT modules installed"
+        
+        append_safe "" "$KERNEL_FILE" "Kernel Info"
+        append_safe "## Magisk Modules Analysis" "$KERNEL_FILE" "Kernel Info"
+        append_safe "" "$KERNEL_FILE" "Kernel Info"
+        append_safe "**Total Modules:** $MODULE_COUNT" "$KERNEL_FILE" "Kernel Info"
+        append_safe "" "$KERNEL_FILE" "Kernel Info"
+        
+        # Detailed module information
+        append_safe "### Installed Modules" "$KERNEL_FILE" "Kernel Info"
+        append_safe "" "$KERNEL_FILE" "Kernel Info"
+        append_safe "| Module ID | Name | Version | Author | Status |" "$KERNEL_FILE" "Kernel Info"
+        append_safe "|-----------|------|---------|--------|--------|" "$KERNEL_FILE" "Kernel Info"
+        
+        for module_dir in /data/adb/modules/*/; do
+            if [ -d "$module_dir" ]; then
+                MODULE_ID=$(basename "$module_dir")
+                
+                # Read module.prop if exists
+                if [ -f "${module_dir}module.prop" ]; then
+                    MODULE_NAME=$(grep "^name=" "${module_dir}module.prop" 2>/dev/null | cut -d'=' -f2- || echo "Unknown")
+                    MODULE_VERSION=$(grep "^version=" "${module_dir}module.prop" 2>/dev/null | cut -d'=' -f2- || echo "Unknown")
+                    MODULE_AUTHOR=$(grep "^author=" "${module_dir}module.prop" 2>/dev/null | cut -d'=' -f2- || echo "Unknown")
+                else
+                    MODULE_NAME="Unknown"
+                    MODULE_VERSION="Unknown"
+                    MODULE_AUTHOR="Unknown"
+                fi
+                
+                # Check if module is disabled
+                if [ -f "${module_dir}disable" ] || [ -f "${module_dir}.disable" ]; then
+                    MODULE_STATUS="Disabled"
+                elif [ -f "${module_dir}remove" ]; then
+                    MODULE_STATUS="Pending Removal"
+                else
+                    MODULE_STATUS="Active"
+                fi
+                
+                append_safe "| $MODULE_ID | $MODULE_NAME | $MODULE_VERSION | $MODULE_AUTHOR | $MODULE_STATUS |" "$KERNEL_FILE" "Kernel Info"
+            fi
+        done
+        
+        append_safe "" "$KERNEL_FILE" "Kernel Info"
+        
+        # Check for specific popular modules and their configurations
+        append_safe "### Module Configurations" "$KERNEL_FILE" "Kernel Info"
+        append_safe "" "$KERNEL_FILE" "Kernel Info"
+        
+        # Check for PIF (Play Integrity Fix)
+        if [ -d "/data/adb/modules/pif" ] || [ -d "/data/adb/modules/playintegrityfix" ]; then
+            append_safe "#### Play Integrity Fix (PIF)" "$KERNEL_FILE" "Kernel Info"
+            if [ -f "/data/adb/pif.json" ]; then
+                append_safe "\`\`\`json" "$KERNEL_FILE" "Kernel Info"
+                head -n 20 /data/adb/pif.json >> "$KERNEL_FILE" 2>/dev/null || append_safe "Configuration file not readable" "$KERNEL_FILE" "Kernel Info"
+                append_safe "\`\`\`" "$KERNEL_FILE" "Kernel Info"
+            else
+                append_safe "**Status:** Installed but no configuration found" "$KERNEL_FILE" "Kernel Info"
+            fi
+            append_safe "" "$KERNEL_FILE" "Kernel Info"
+        fi
+        
+        # Check for TrickyStore
+        if [ -d "/data/adb/modules/trickystore" ]; then
+            append_safe "#### TrickyStore" "$KERNEL_FILE" "Kernel Info"
+            if [ -f "/data/adb/tricky_store/keybox.xml" ]; then
+                append_safe "**Status:** Active with keybox configuration" "$KERNEL_FILE" "Kernel Info"
+                append_safe "**Keybox file:** Present" "$KERNEL_FILE" "Kernel Info"
+            else
+                append_safe "**Status:** Installed but no keybox found" "$KERNEL_FILE" "Kernel Info"
+            fi
+            append_safe "" "$KERNEL_FILE" "Kernel Info"
+        fi
+        
+        # Check for LSPosed/EdXposed
+        if [ -d "/data/adb/modules/lsposed" ] || [ -d "/data/adb/modules/edxposed" ]; then
+            append_safe "#### LSPosed/EdXposed Framework" "$KERNEL_FILE" "Kernel Info"
+            if [ -d "/data/adb/lspd" ]; then
+                LSPOSED_VERSION=$(grep "versionName" /data/adb/lspd/manager.apk 2>/dev/null || echo "Unknown")
+                append_safe "**Status:** Active" "$KERNEL_FILE" "Kernel Info"
+                append_safe "**Version:** $LSPOSED_VERSION" "$KERNEL_FILE" "Kernel Info"
+            else
+                append_safe "**Status:** Installed" "$KERNEL_FILE" "Kernel Info"
+            fi
+            append_safe "" "$KERNEL_FILE" "Kernel Info"
+        fi
+        
+        # Check for Zygisk modules
+        if [ -d "/data/adb/modules/zygisk_lsposed" ] || [ -d "/data/adb/modules/shamiko" ] || [ -d "/data/adb/modules/zygisksu" ]; then
+            append_safe "#### Zygisk Modules" "$KERNEL_FILE" "Kernel Info"
+            
+            # Shamiko
+            if [ -d "/data/adb/modules/shamiko" ]; then
+                append_safe "**Shamiko:** Installed (MagiskHide replacement)" "$KERNEL_FILE" "Kernel Info"
+                if [ -f "/data/adb/shamiko/whitelist" ]; then
+                    WHITELIST_COUNT=$(wc -l < /data/adb/shamiko/whitelist 2>/dev/null || echo "0")
+                    append_safe "  - Whitelist entries: $WHITELIST_COUNT" "$KERNEL_FILE" "Kernel Info"
+                fi
+            fi
+            
+            # LSPosed Zygisk
+            if [ -d "/data/adb/modules/zygisk_lsposed" ]; then
+                append_safe "**LSPosed Zygisk:** Installed" "$KERNEL_FILE" "Kernel Info"
+            fi
+            
+            append_safe "" "$KERNEL_FILE" "Kernel Info"
+        fi
+        
+        # Check for SUSFS
+        if [ -d "/data/adb/modules/susfs" ]; then
+            append_safe "#### SUSFS (Simple Userspace FS)" "$KERNEL_FILE" "Kernel Info"
+            if [ -f "/data/adb/susfs/config" ]; then
+                append_safe "**Status:** Active with configuration" "$KERNEL_FILE" "Kernel Info"
+                CONFIG_LINES=$(wc -l < /data/adb/susfs/config 2>/dev/null || echo "0")
+                append_safe "**Config entries:** $CONFIG_LINES" "$KERNEL_FILE" "Kernel Info"
+            else
+                append_safe "**Status:** Installed but no configuration found" "$KERNEL_FILE" "Kernel Info"
+            fi
+            append_safe "" "$KERNEL_FILE" "Kernel Info"
+        fi
+        
+        # Check for other common modules
+        append_safe "#### Other Notable Modules" "$KERNEL_FILE" "Kernel Info"
+        
+        # Universal SafetyNet Fix
+        if [ -d "/data/adb/modules/safetynetfix" ] || [ -d "/data/adb/modules/universal-safetynet-fix" ]; then
+            append_safe "**SafetyNet Fix:** Installed" "$KERNEL_FILE" "Kernel Info"
+        fi
+        
+        # MagiskHide Props Config
+        if [ -d "/data/adb/modules/MagiskHidePropsConf" ]; then
+            append_safe "**MagiskHide Props Config:** Installed" "$KERNEL_FILE" "Kernel Info"
+        fi
+        
+        # Busybox
+        if [ -d "/data/adb/modules/busybox-ndk" ]; then
+            append_safe "**BusyBox NDK:** Installed" "$KERNEL_FILE" "Kernel Info"
+        fi
+        
+        append_safe "" "$KERNEL_FILE" "Kernel Info"
     fi
+    
 # Check for KernelSU
 elif [ -f "/data/adb/ksu/ksu" ] || [ -f "/data/adb/ksud" ] || [ -f "/sys/fs/ksu/version" ]; then
     ROOT_STATUS="KernelSU"
@@ -475,6 +617,37 @@ elif [ -f "/data/adb/ksu/ksu" ] || [ -f "/data/adb/ksud" ] || [ -f "/sys/fs/ksu/
     else
         ROOT_DETAILS="KernelSU files detected but su not available"
     fi
+    
+    # Check for KernelSU modules
+    append_safe "" "$KERNEL_FILE" "Kernel Info"
+    append_safe "## KernelSU Modules Analysis" "$KERNEL_FILE" "Kernel Info"
+    append_safe "" "$KERNEL_FILE" "Kernel Info"
+    
+    if [ -d "/data/adb/modules" ]; then
+        KSU_MODULE_COUNT=$(ls -1 /data/adb/modules 2>/dev/null | wc -l)
+        append_safe "**Total Modules:** $KSU_MODULE_COUNT" "$KERNEL_FILE" "Kernel Info"
+        append_safe "" "$KERNEL_FILE" "Kernel Info"
+        
+        # List KernelSU modules with basic info
+        append_safe "### Installed KernelSU Modules" "$KERNEL_FILE" "Kernel Info"
+        append_safe "" "$KERNEL_FILE" "Kernel Info"
+        
+        for module_dir in /data/adb/modules/*/; do
+            if [ -d "$module_dir" ]; then
+                MODULE_ID=$(basename "$module_dir")
+                append_safe "- **$MODULE_ID**" "$KERNEL_FILE" "Kernel Info"
+                
+                if [ -f "${module_dir}module.prop" ]; then
+                    MODULE_NAME=$(grep "^name=" "${module_dir}module.prop" 2>/dev/null | cut -d'=' -f2- || echo "Unknown")
+                    append_safe "  - Name: $MODULE_NAME" "$KERNEL_FILE" "Kernel Info"
+                fi
+            fi
+        done
+    else
+        append_safe "**Status:** No modules directory found" "$KERNEL_FILE" "Kernel Info"
+    fi
+    
+    append_safe "" "$KERNEL_FILE" "Kernel Info"
 # Check for SuperSU
 elif [ -f "/system/xbin/su" ] || [ -f "/system/bin/su" ] || [ -f "/sbin/su" ]; then
     ROOT_STATUS="Traditional Root"
@@ -560,6 +733,180 @@ fi
 append_safe "" "$BOOT_FILE" "Boot Security"
 log_success "Boot and security analysis saved to 03-boot-security.md"
 
+# ---------- ROOT MODULES ANALYSIS ----------
+log_info "Analyzing root modules and configurations..."
+
+# Initialize root modules file
+append_safe "# Root Modules and Configurations" "$ROOT_MODULES_FILE" "Root Modules"
+append_safe "" "$ROOT_MODULES_FILE" "Root Modules"
+append_safe "**Analysis Date:** $(date 2>/dev/null || echo 'Date unavailable')" "$ROOT_MODULES_FILE" "Root Modules"
+append_safe "" "$ROOT_MODULES_FILE" "Root Modules"
+
+# Check if we have root management detected
+if [ "$ROOT_STATUS" = "Magisk" ] || [ "$ROOT_STATUS" = "KernelSU" ]; then
+    append_safe "## Root Management: $ROOT_STATUS" "$ROOT_MODULES_FILE" "Root Modules"
+    append_safe "" "$ROOT_MODULES_FILE" "Root Modules"
+    append_safe "**Status:** $ROOT_DETAILS" "$ROOT_MODULES_FILE" "Root Modules"
+    append_safe "" "$ROOT_MODULES_FILE" "Root Modules"
+    
+    if [ -d "/data/adb/modules" ]; then
+        MODULE_COUNT=$(ls -1 /data/adb/modules 2>/dev/null | wc -l)
+        append_safe "## Module Overview" "$ROOT_MODULES_FILE" "Root Modules"
+        append_safe "" "$ROOT_MODULES_FILE" "Root Modules"
+        append_safe "**Total Modules:** $MODULE_COUNT" "$ROOT_MODULES_FILE" "Root Modules"
+        append_safe "" "$ROOT_MODULES_FILE" "Root Modules"
+        
+        # Detailed module analysis
+        append_safe "## Detailed Module Analysis" "$ROOT_MODULES_FILE" "Root Modules"
+        append_safe "" "$ROOT_MODULES_FILE" "Root Modules"
+        
+        for module_dir in /data/adb/modules/*/; do
+            if [ -d "$module_dir" ]; then
+                MODULE_ID=$(basename "$module_dir")
+                append_safe "### Module: $MODULE_ID" "$ROOT_MODULES_FILE" "Root Modules"
+                append_safe "" "$ROOT_MODULES_FILE" "Root Modules"
+                
+                # Read module.prop details
+                if [ -f "${module_dir}module.prop" ]; then
+                    append_safe "**Configuration (module.prop):**" "$ROOT_MODULES_FILE" "Root Modules"
+                    append_safe "\`\`\`" "$ROOT_MODULES_FILE" "Root Modules"
+                    cat "${module_dir}module.prop" >> "$ROOT_MODULES_FILE" 2>/dev/null || append_safe "Unable to read module.prop" "$ROOT_MODULES_FILE" "Root Modules"
+                    append_safe "\`\`\`" "$ROOT_MODULES_FILE" "Root Modules"
+                else
+                    append_safe "**Status:** No module.prop found" "$ROOT_MODULES_FILE" "Root Modules"
+                fi
+                
+                # Check module status
+                if [ -f "${module_dir}disable" ]; then
+                    append_safe "**Module Status:** Disabled" "$ROOT_MODULES_FILE" "Root Modules"
+                elif [ -f "${module_dir}remove" ]; then
+                    append_safe "**Module Status:** Scheduled for removal" "$ROOT_MODULES_FILE" "Root Modules"
+                else
+                    append_safe "**Module Status:** Active" "$ROOT_MODULES_FILE" "Root Modules"
+                fi
+                
+                # List important files
+                append_safe "" "$ROOT_MODULES_FILE" "Root Modules"
+                append_safe "**Module Files:**" "$ROOT_MODULES_FILE" "Root Modules"
+                if [ -f "${module_dir}service.sh" ]; then
+                    append_safe "- service.sh (Boot service script)" "$ROOT_MODULES_FILE" "Root Modules"
+                fi
+                if [ -f "${module_dir}post-fs-data.sh" ]; then
+                    append_safe "- post-fs-data.sh (Early boot script)" "$ROOT_MODULES_FILE" "Root Modules"
+                fi
+                if [ -d "${module_dir}system" ]; then
+                    SYS_FILES=$(find "${module_dir}system" -type f 2>/dev/null | wc -l)
+                    append_safe "- system/ directory ($SYS_FILES files)" "$ROOT_MODULES_FILE" "Root Modules"
+                fi
+                if [ -f "${module_dir}sepolicy.rule" ]; then
+                    append_safe "- sepolicy.rule (SELinux policy modifications)" "$ROOT_MODULES_FILE" "Root Modules"
+                fi
+                
+                append_safe "" "$ROOT_MODULES_FILE" "Root Modules"
+                append_safe "---" "$ROOT_MODULES_FILE" "Root Modules"
+                append_safe "" "$ROOT_MODULES_FILE" "Root Modules"
+            fi
+        done
+        
+        # Special configurations for popular modules
+        append_safe "## Popular Module Configurations" "$ROOT_MODULES_FILE" "Root Modules"
+        append_safe "" "$ROOT_MODULES_FILE" "Root Modules"
+        
+        # PIF (Play Integrity Fix) detailed analysis
+        if [ -f "/data/adb/pif.json" ] || [ -f "/data/local/tmp/pif.json" ]; then
+            append_safe "### Play Integrity Fix (PIF) Configuration" "$ROOT_MODULES_FILE" "Root Modules"
+            append_safe "" "$ROOT_MODULES_FILE" "Root Modules"
+            
+            for pif_file in "/data/adb/pif.json" "/data/local/tmp/pif.json"; do
+                if [ -f "$pif_file" ]; then
+                    append_safe "**Configuration file:** $pif_file" "$ROOT_MODULES_FILE" "Root Modules"
+                    append_safe "\`\`\`json" "$ROOT_MODULES_FILE" "Root Modules"
+                    cat "$pif_file" >> "$ROOT_MODULES_FILE" 2>/dev/null || append_safe "Unable to read PIF configuration" "$ROOT_MODULES_FILE" "Root Modules"
+                    append_safe "\`\`\`" "$ROOT_MODULES_FILE" "Root Modules"
+                    append_safe "" "$ROOT_MODULES_FILE" "Root Modules"
+                    break
+                fi
+            done
+        fi
+        
+        # TrickyStore configuration
+        if [ -d "/data/adb/tricky_store" ]; then
+            append_safe "### TrickyStore Configuration" "$ROOT_MODULES_FILE" "Root Modules"
+            append_safe "" "$ROOT_MODULES_FILE" "Root Modules"
+            
+            if [ -f "/data/adb/tricky_store/keybox.xml" ]; then
+                append_safe "**Keybox Configuration:**" "$ROOT_MODULES_FILE" "Root Modules"
+                append_safe "\`\`\`xml" "$ROOT_MODULES_FILE" "Root Modules"
+                head -n 20 "/data/adb/tricky_store/keybox.xml" >> "$ROOT_MODULES_FILE" 2>/dev/null || append_safe "Unable to read keybox configuration" "$ROOT_MODULES_FILE" "Root Modules"
+                append_safe "\`\`\`" "$ROOT_MODULES_FILE" "Root Modules"
+            fi
+            
+            if [ -f "/data/adb/tricky_store/target.txt" ]; then
+                append_safe "" "$ROOT_MODULES_FILE" "Root Modules"
+                append_safe "**Target Applications:**" "$ROOT_MODULES_FILE" "Root Modules"
+                append_safe "\`\`\`" "$ROOT_MODULES_FILE" "Root Modules"
+                cat "/data/adb/tricky_store/target.txt" >> "$ROOT_MODULES_FILE" 2>/dev/null || append_safe "Unable to read target configuration" "$ROOT_MODULES_FILE" "Root Modules"
+                append_safe "\`\`\`" "$ROOT_MODULES_FILE" "Root Modules"
+            fi
+            append_safe "" "$ROOT_MODULES_FILE" "Root Modules"
+        fi
+        
+        # Shamiko configuration
+        if [ -f "/data/adb/shamiko/whitelist" ]; then
+            append_safe "### Shamiko Hide Configuration" "$ROOT_MODULES_FILE" "Root Modules"
+            append_safe "" "$ROOT_MODULES_FILE" "Root Modules"
+            append_safe "**Whitelist Entries:**" "$ROOT_MODULES_FILE" "Root Modules"
+            append_safe "\`\`\`" "$ROOT_MODULES_FILE" "Root Modules"
+            cat "/data/adb/shamiko/whitelist" >> "$ROOT_MODULES_FILE" 2>/dev/null || append_safe "Unable to read whitelist" "$ROOT_MODULES_FILE" "Root Modules"
+            append_safe "\`\`\`" "$ROOT_MODULES_FILE" "Root Modules"
+            append_safe "" "$ROOT_MODULES_FILE" "Root Modules"
+        fi
+        
+        # SUSFS configuration
+        if [ -f "/data/adb/susfs/config" ]; then
+            append_safe "### SUSFS Configuration" "$ROOT_MODULES_FILE" "Root Modules"
+            append_safe "" "$ROOT_MODULES_FILE" "Root Modules"
+            append_safe "**SUSFS Config:**" "$ROOT_MODULES_FILE" "Root Modules"
+            append_safe "\`\`\`" "$ROOT_MODULES_FILE" "Root Modules"
+            cat "/data/adb/susfs/config" >> "$ROOT_MODULES_FILE" 2>/dev/null || append_safe "Unable to read SUSFS configuration" "$ROOT_MODULES_FILE" "Root Modules"
+            append_safe "\`\`\`" "$ROOT_MODULES_FILE" "Root Modules"
+            append_safe "" "$ROOT_MODULES_FILE" "Root Modules"
+        fi
+        
+        # LSPosed module list
+        if [ -d "/data/adb/lspd" ]; then
+            append_safe "### LSPosed Framework" "$ROOT_MODULES_FILE" "Root Modules"
+            append_safe "" "$ROOT_MODULES_FILE" "Root Modules"
+            
+            # Try to get LSPosed module info
+            if [ -f "/data/adb/lspd/config/modules.list" ]; then
+                append_safe "**Active Modules:**" "$ROOT_MODULES_FILE" "Root Modules"
+                append_safe "\`\`\`" "$ROOT_MODULES_FILE" "Root Modules"
+                cat "/data/adb/lspd/config/modules.list" >> "$ROOT_MODULES_FILE" 2>/dev/null || append_safe "Unable to read LSPosed modules" "$ROOT_MODULES_FILE" "Root Modules"
+                append_safe "\`\`\`" "$ROOT_MODULES_FILE" "Root Modules"
+            else
+                append_safe "**Status:** LSPosed detected but no module list found" "$ROOT_MODULES_FILE" "Root Modules"
+            fi
+            append_safe "" "$ROOT_MODULES_FILE" "Root Modules"
+        fi
+        
+    else
+        append_safe "## No Modules Directory" "$ROOT_MODULES_FILE" "Root Modules"
+        append_safe "" "$ROOT_MODULES_FILE" "Root Modules"
+        append_safe "No /data/adb/modules directory found." "$ROOT_MODULES_FILE" "Root Modules"
+        append_safe "" "$ROOT_MODULES_FILE" "Root Modules"
+    fi
+    
+else
+    append_safe "## No Root Management Detected" "$ROOT_MODULES_FILE" "Root Modules"
+    append_safe "" "$ROOT_MODULES_FILE" "Root Modules"
+    append_safe "No supported root management system (Magisk/KernelSU) was detected." "$ROOT_MODULES_FILE" "Root Modules"
+    append_safe "This file would contain detailed root module configurations if root access was available." "$ROOT_MODULES_FILE" "Root Modules"
+    append_safe "" "$ROOT_MODULES_FILE" "Root Modules"
+fi
+
+log_success "Root modules analysis saved to 04-root-modules.md"
+
 # ---------- HARDWARE INFORMATION ----------
 log_info "Collecting hardware information..."
 
@@ -604,9 +951,7 @@ else
 fi
 
 append_safe "" "$HARDWARE_FILE" "Hardware Info"
-log_success "Hardware information saved to 04-hardware.md"
-append_safe "</details>" "$OUT" "Memory Info"
-append_safe "" "$OUT" "Memory Info"
+log_success "Hardware information saved to 05-hardware.md"
 
 # ---------- STORAGE AND PARTITIONS ----------
 log_info "Collecting storage and partition information..."
@@ -667,151 +1012,33 @@ fi
 append_safe "\`\`\`" "$STORAGE_FILE" "Storage Info"
 append_safe "" "$STORAGE_FILE" "Storage Info"
 
-log_success "Storage information saved to 05-storage.md"
+log_success "Storage information saved to 06-storage.md"
 
-# ---------- HARDWARE SERVICES ----------
-log_info "Collecting hardware service information..."
+# Add missing sections to complete the 7-services file
+append_safe "# System Services and Hardware" "$SERVICES_FILE" "Services Info"
+append_safe "" "$SERVICES_FILE" "Services Info"
+append_safe "## Hardware Services" "$SERVICES_FILE" "Services Info"
+append_safe "" "$SERVICES_FILE" "Services Info"
 
-append_safe "## 📺 Display & Graphics" "$OUT" "Display Info"
-append_safe "" "$OUT" "Display Info"
-append_safe "<details>" "$OUT" "Display Info"
-append_safe "<summary>Display Service</summary>" "$OUT" "Display Info"
-append_safe "" "$OUT" "Display Info"
-append_safe "\`\`\`" "$OUT" "Display Info"
 if command -v dumpsys >/dev/null 2>&1; then
-    if ! dumpsys display >> "$OUT" 2>/dev/null; then
-        append_safe "Display service information unavailable" "$OUT" "Display Info"
-    fi
+    # Battery information
+    append_safe "### Battery Information" "$SERVICES_FILE" "Services Info"
+    append_safe "\`\`\`" "$SERVICES_FILE" "Services Info"
+    dumpsys battery 2>/dev/null | head -n 30 >> "$SERVICES_FILE" || append_safe "Battery service unavailable" "$SERVICES_FILE" "Services Info"
+    append_safe "\`\`\`" "$SERVICES_FILE" "Services Info"
+    append_safe "" "$SERVICES_FILE" "Services Info"
+    
+    # Display information
+    append_safe "### Display Information" "$SERVICES_FILE" "Services Info"
+    append_safe "\`\`\`" "$SERVICES_FILE" "Services Info"
+    dumpsys display 2>/dev/null | head -n 30 >> "$SERVICES_FILE" || append_safe "Display service unavailable" "$SERVICES_FILE" "Services Info"
+    append_safe "\`\`\`" "$SERVICES_FILE" "Services Info"
+    append_safe "" "$SERVICES_FILE" "Services Info"
 else
-    append_safe "dumpsys command not available" "$OUT" "Display Info"
+    append_safe "**Error:** dumpsys command not available" "$SERVICES_FILE" "Services Info"
 fi
-append_safe "\`\`\`" "$OUT" "Display Info"
-append_safe "" "$OUT" "Display Info"
-append_safe "</details>" "$OUT" "Display Info"
-append_safe "" "$OUT" "Display Info"
 
-append_safe "<details>" "$OUT" "Display Info"
-append_safe "<summary>SurfaceFlinger (First 120 lines)</summary>" "$OUT" "Display Info"
-append_safe "" "$OUT" "Display Info"
-append_safe "\`\`\`" "$OUT" "Display Info"
-if command -v dumpsys >/dev/null 2>&1; then
-    if ! dumpsys SurfaceFlinger | head -n 120 >> "$OUT" 2>/dev/null; then
-        append_safe "SurfaceFlinger information unavailable" "$OUT" "Display Info"
-    fi
-else
-    append_safe "dumpsys command not available" "$OUT" "Display Info"
-fi
-append_safe "\`\`\`" "$OUT" "Display Info"
-append_safe "" "$OUT" "Display Info"
-append_safe "</details>" "$OUT" "Display Info"
-append_safe "" "$OUT" "Display Info"
-
-# ---------- POWER MANAGEMENT ----------
-log_info "Collecting power management information..."
-
-append_safe "## 🔋 Power & Battery" "$OUT" "Power Info"
-append_safe "" "$OUT" "Power Info"
-append_safe "### Battery Status" "$OUT" "Power Info"
-append_safe "\`\`\`" "$OUT" "Power Info"
-if command -v dumpsys >/dev/null 2>&1; then
-    if ! dumpsys battery >> "$OUT" 2>/dev/null; then
-        append_safe "Battery information unavailable" "$OUT" "Power Info"
-    fi
-else
-    append_safe "dumpsys command not available" "$OUT" "Power Info"
-fi
-append_safe "\`\`\`" "$OUT" "Power Info"
-append_safe "" "$OUT" "Power Info"
-
-append_safe "<details>" "$OUT" "Power Info"
-append_safe "<summary>Power Management</summary>" "$OUT" "Power Info"
-append_safe "" "$OUT" "Power Info"
-append_safe "\`\`\`" "$OUT" "Power Info"
-if command -v dumpsys >/dev/null 2>&1; then
-    if ! dumpsys power >> "$OUT" 2>/dev/null; then
-        append_safe "Power management information unavailable" "$OUT" "Power Info"
-    fi
-else
-    append_safe "dumpsys command not available" "$OUT" "Power Info"
-fi
-append_safe "\`\`\`" "$OUT" "Power Info"
-append_safe "" "$OUT" "Power Info"
-append_safe "</details>" "$OUT" "Power Info"
-append_safe "" "$OUT" "Power Info"
-
-# ---------- CONNECTIVITY ----------
-log_info "Collecting connectivity information..."
-
-append_safe "## 📡 Connectivity" "$OUT" "Connectivity Info"
-append_safe "" "$OUT" "Connectivity Info"
-append_safe "<details>" "$OUT" "Connectivity Info"
-append_safe "<summary>WiFi Service</summary>" "$OUT" "Connectivity Info"
-append_safe "" "$OUT" "Connectivity Info"
-append_safe "\`\`\`" "$OUT" "Connectivity Info"
-if command -v dumpsys >/dev/null 2>&1; then
-    if ! dumpsys wifi >> "$OUT" 2>/dev/null; then
-        append_safe "WiFi service information unavailable" "$OUT" "Connectivity Info"
-    fi
-else
-    append_safe "dumpsys command not available" "$OUT" "Connectivity Info"
-fi
-append_safe "\`\`\`" "$OUT" "Connectivity Info"
-append_safe "" "$OUT" "Connectivity Info"
-append_safe "</details>" "$OUT" "Connectivity Info"
-append_safe "" "$OUT" "Connectivity Info"
-
-append_safe "<details>" "$OUT" "Connectivity Info"
-append_safe "<summary>Telephony Registry</summary>" "$OUT" "Connectivity Info"
-append_safe "" "$OUT" "Connectivity Info"
-append_safe "\`\`\`" "$OUT" "Connectivity Info"
-if command -v dumpsys >/dev/null 2>&1; then
-    if ! dumpsys telephony.registry >> "$OUT" 2>/dev/null; then
-        append_safe "Telephony registry information unavailable" "$OUT" "Connectivity Info"
-    fi
-else
-    append_safe "dumpsys command not available" "$OUT" "Connectivity Info"
-fi
-append_safe "\`\`\`" "$OUT" "Connectivity Info"
-append_safe "" "$OUT" "Connectivity Info"
-append_safe "</details>" "$OUT" "Connectivity Info"
-append_safe "" "$OUT" "Connectivity Info"
-
-append_safe "<details>" "$OUT" "Connectivity Info"
-append_safe "<summary>Radio/Phone Service</summary>" "$OUT" "Connectivity Info"
-append_safe "" "$OUT" "Connectivity Info"
-append_safe "\`\`\`" "$OUT" "Connectivity Info"
-if command -v dumpsys >/dev/null 2>&1; then
-    if ! dumpsys phone >> "$OUT" 2>/dev/null; then
-        append_safe "Phone service information unavailable" "$OUT" "Connectivity Info"
-    fi
-else
-    append_safe "dumpsys command not available" "$OUT" "Connectivity Info"
-fi
-append_safe "\`\`\`" "$OUT" "Connectivity Info"
-append_safe "" "$OUT" "Connectivity Info"
-append_safe "</details>" "$OUT" "Connectivity Info"
-append_safe "" "$OUT" "Connectivity Info"
-
-# ---------- SENSORS ----------
-log_info "Collecting sensor information..."
-
-append_safe "## 📊 Sensors" "$OUT" "Sensor Info"
-append_safe "" "$OUT" "Sensor Info"
-append_safe "<details>" "$OUT" "Sensor Info"
-append_safe "<summary>Sensor Service</summary>" "$OUT" "Sensor Info"
-append_safe "" "$OUT" "Sensor Info"
-append_safe "\`\`\`" "$OUT" "Sensor Info"
-if command -v dumpsys >/dev/null 2>&1; then
-    if ! dumpsys sensorservice >> "$OUT" 2>/dev/null; then
-        append_safe "Sensor service information unavailable" "$OUT" "Sensor Info"
-    fi
-else
-    append_safe "dumpsys command not available" "$OUT" "Sensor Info"
-fi
-append_safe "\`\`\`" "$OUT" "Sensor Info"
-append_safe "" "$OUT" "Sensor Info"
-append_safe "</details>" "$OUT" "Sensor Info"
-append_safe "" "$OUT" "Sensor Info"
+log_success "System services saved to 07-services.md"
 
 # ---------- SOFTWARE AND APPLICATIONS ----------
 log_info "Collecting software and application information..."
@@ -882,9 +1109,9 @@ append_safe "" "$SUMMARY_FILE" "Summary"
 append_safe "## Analysis Complete" "$SUMMARY_FILE" "Summary"
 append_safe "" "$SUMMARY_FILE" "Summary"
 append_safe "**Export completed:** $(date 2>/dev/null || echo 'Date unavailable')" "$SUMMARY_FILE" "Summary"
-append_safe "**Total files generated:** 8" "$SUMMARY_FILE" "Summary"
+append_safe "**Total files generated:** 9" "$SUMMARY_FILE" "Summary"
 append_safe "" "$SUMMARY_FILE" "Summary"
-append_safe "*Generated by Speccy v4.0 - Universal Android Device Analyzer*" "$SUMMARY_FILE" "Summary"
+append_safe "*Generated by Speccy v4.1 - Universal Android Device Analyzer with Root Module Analysis*" "$SUMMARY_FILE" "Summary"
 
 echo ""
 echo "════════════════════════════════════════════════════════"
@@ -893,7 +1120,7 @@ echo "════════════════════════�
 
 # Verify all files were created
 TOTAL_FILES=0
-for file in "$SUMMARY_FILE" "$DEVICE_FILE" "$KERNEL_FILE" "$BOOT_FILE" "$HARDWARE_FILE" "$STORAGE_FILE" "$SERVICES_FILE" "$SOFTWARE_FILE"; do
+for file in "$SUMMARY_FILE" "$DEVICE_FILE" "$KERNEL_FILE" "$BOOT_FILE" "$ROOT_MODULES_FILE" "$HARDWARE_FILE" "$STORAGE_FILE" "$SERVICES_FILE" "$SOFTWARE_FILE"; do
     if [ -f "$file" ]; then
         TOTAL_FILES=$((TOTAL_FILES + 1))
     else
@@ -902,22 +1129,23 @@ for file in "$SUMMARY_FILE" "$DEVICE_FILE" "$KERNEL_FILE" "$BOOT_FILE" "$HARDWAR
 done
 
 echo "[INFO] Output Directory: $OUTPUT_DIR"
-echo "[INFO] Files Generated: $TOTAL_FILES/8"
+echo "[INFO] Files Generated: $TOTAL_FILES/9"
 echo "[INFO] Analysis ID: ${DATE_STR}"
 echo ""
 echo "[INFO] Generated Files:"
-echo "  • 00-SUMMARY.md      - Analysis overview and file index"
-echo "  • 01-device-info.md  - Device specifications and build info"
-echo "  • 02-kernel-root.md  - Kernel version and root management"
-echo "  • 03-boot-security.md - Boot state and security features"
-echo "  • 04-hardware.md     - CPU, memory, and hardware details"
-echo "  • 05-storage.md      - Storage, partitions, and file systems"
-echo "  • 06-services.md     - System services and hardware interfaces"
-echo "  • 07-software.md     - Installed packages and applications"
-echo "  • export.log         - Analysis process log and error details"
+echo "  • 00-SUMMARY.md        - Analysis overview and file index"
+echo "  • 01-device-info.md    - Device specifications and build info"
+echo "  • 02-kernel-root.md    - Kernel version and root management"
+echo "  • 03-boot-security.md  - Boot state and security features"
+echo "  • 04-root-modules.md   - Root modules, configs, and settings"
+echo "  • 05-hardware.md       - CPU, memory, and hardware details"
+echo "  • 06-storage.md        - Storage, partitions, and file systems"
+echo "  • 07-services.md       - System services and hardware interfaces"
+echo "  • 08-software.md       - Installed packages and applications"
+echo "  • export.log           - Analysis process log and error details"
 echo ""
 
-if [ "$TOTAL_FILES" -eq 8 ]; then
+if [ "$TOTAL_FILES" -eq 9 ]; then
     echo "[SUCCESS] All files generated successfully!"
     echo "[INFO] View summary: cat \"$SUMMARY_FILE\""
     echo "[INFO] Browse directory: ls -la \"$OUTPUT_DIR\""

@@ -29,25 +29,62 @@ A curated collection of lightweight, practical tools for development, testing, s
 
 #### Features
 - **Device Information:** Model, build fingerprint, Android version, security patch level
-- **Kernel Analysis:** Kernel version, root detection, boot state verification
-- **Root Management:** Detects Magisk, KernelSU, SuperSU, and custom root solutions
-- **System State:** CPU info, memory usage, storage analysis, partition layout
-- **Hardware Details:** Display configuration, battery status, sensors, telephony
-- **Security Context:** Verified boot state, vbmeta digest, integrity analysis
-- **Package Analysis:** Complete list of installed packages and system activities
+- **Kernel & Root Analysis:** Kernel version, universal root detection with detailed configuration
+- **Root Module Analysis:** Deep inspection of Magisk/KernelSU modules with configuration details
+- **Module Configurations:** PIF settings, TrickyStore keybox, Shamiko whitelist, LSPosed modules, SUSFS config
+- **Popular Module Detection:** Automatic detection of PIF, TrickyStore, Shamiko, LSPosed, SUSFS, SafetyNet Fix
+- **Boot & Security:** Verified boot state, VBMeta analysis, bootloader status, SELinux configuration
+- **Hardware Analysis:** CPU specs, memory details, storage overview, partition analysis
+- **System Services:** Battery management, display configuration, hardware services
+- **Software Inventory:** Package analysis, activity manager, system software overview
+
+#### New in v4.1
+- **🆕 Dedicated Root Modules File:** Complete module analysis with configurations
+- **🆕 Deep Module Inspection:** Full module.prop reading, status detection, file analysis
+- **🆕 Configuration Export:** PIF.json, TrickyStore keybox, Shamiko whitelist, SUSFS config
+- **🆕 Multi-File Output:** 9 organized files instead of single overwhelming document
+- **🆕 Professional Interface:** Clean logging without emojis, structured progress indicators
+
+#### Output Structure
+The tool creates a comprehensive analysis directory:
+```
+Speccy-YYYYMMDDHHMM/
+├── 00-SUMMARY.md         # Analysis overview and file index  
+├── 01-device-info.md     # Device specifications and build info
+├── 02-kernel-root.md     # Kernel version and root management
+├── 03-boot-security.md   # Boot state and security features
+├── 04-root-modules.md    # Root modules, configs, and settings
+├── 05-hardware.md        # CPU, memory, and hardware details
+├── 06-storage.md         # Storage, partitions, and file systems
+├── 07-services.md        # System services and hardware interfaces
+├── 08-software.md        # Installed packages and applications
+└── export.log           # Analysis process log and error details
+```
 
 #### Compatibility
 Works with any rooted Android device including:
-- **Magisk** rooted devices (with module detection)
-- **KernelSU** rooted devices
+- **Magisk** rooted devices (with comprehensive module analysis)
+- **KernelSU** rooted devices (with module detection and configuration export)
 - **SuperSU** legacy rooted devices
 - **Custom ROM** devices with built-in root
 - **AOSP** builds with root access
 
 #### Usage
 ```bash
-# One-liner installation and execution
+# One-liner installation and execution  
 curl -fsSL https://zahidoverflow.github.io/tools/speccy.sh | sudo bash
+
+# Or download and run locally
+wget https://zahidoverflow.github.io/tools/speccy.sh
+chmod +x speccy.sh
+./speccy.sh
+
+# View results
+cd Speccy-*
+cat 00-SUMMARY.md                    # Overview and file index
+cat 04-root-modules.md               # Root modules and configurations
+ls -la                               # Browse all generated files
+```
 
 # Or manual execution
 chmod +x speccy.sh
