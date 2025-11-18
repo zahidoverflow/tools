@@ -335,8 +335,9 @@ HARDWARE_FILE="$BASE_OUT/05-hardware.md"
 STORAGE_FILE="$BASE_OUT/06-storage.md"
 SERVICES_FILE="$BASE_OUT/07-services.md"
 SOFTWARE_FILE="$BASE_OUT/08-software.md"
-SUMMARY_FILE="$BASE_OUT/00-summary.md"
-LOG_OUT="$BASE_OUT/$LOG_FILE"
+PLAY_INTEGRITY_FILE="$BASE_OUT/09-play-integrity.md"
+SUMMARY_FILE="$BASE_OUT/00-SUMMARY.md"
+LOG_OUT="$BASE_OUT/export.log"
 
 log_info "Creating directory structure: $BASE_OUT"
 
@@ -361,6 +362,7 @@ append_safe "## File Structure" "$SUMMARY_FILE" "Summary"
 append_safe "" "$SUMMARY_FILE" "Summary"
 append_safe "| File | Description |" "$SUMMARY_FILE" "Summary"
 append_safe "|------|-------------|" "$SUMMARY_FILE" "Summary"
+append_safe "| \`00-SUMMARY.md\` | Analysis overview and file index |" "$SUMMARY_FILE" "Summary"
 append_safe "| \`01-device-info.md\` | Device specifications and build information |" "$SUMMARY_FILE" "Summary"
 append_safe "| \`02-kernel-root.md\` | Kernel version and root management details |" "$SUMMARY_FILE" "Summary"
 append_safe "| \`03-boot-security.md\` | Boot state and security verification |" "$SUMMARY_FILE" "Summary"
@@ -369,6 +371,7 @@ append_safe "| \`05-hardware.md\` | CPU, memory, and hardware configuration |" "
 append_safe "| \`06-storage.md\` | Storage, partitions, and file systems |" "$SUMMARY_FILE" "Summary"
 append_safe "| \`07-services.md\` | System services and hardware interfaces |" "$SUMMARY_FILE" "Summary"
 append_safe "| \`08-software.md\` | Installed packages and system software |" "$SUMMARY_FILE" "Summary"
+append_safe "| \`09-play-integrity.md\` | Play Integrity analysis and recommendations |" "$SUMMARY_FILE" "Summary"
 append_safe "| \`export.log\` | Export process log and error details |" "$SUMMARY_FILE" "Summary"
 append_safe "" "$SUMMARY_FILE" "Summary"
 
@@ -1075,6 +1078,337 @@ fi
 append_safe "" "$SOFTWARE_FILE" "Software Info"
 log_success "Software information saved to 07-software.md"
 
+# ---------- PLAY INTEGRITY ANALYSIS ----------
+log_info "Analyzing Play Integrity status and generating recommendations..."
+
+# Initialize Play Integrity file
+append_safe "# Play Integrity Analysis & Root Hiding Guide" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "**Analysis Date:** $(date 2>/dev/null || echo 'Date unavailable')" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "**Device:** $BRAND $MODEL" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "**Root Status:** $ROOT_STATUS" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+
+append_safe "## Current System Analysis" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+
+# Analyze current system state for Play Integrity
+append_safe "### Device Security State" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "| Property | Value | Impact |" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "|----------|-------|--------|" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+
+# Boot state analysis
+if command -v getprop >/dev/null 2>&1; then
+    BOOT_STATE=$(getprop ro.boot.verifiedbootstate 2>/dev/null || echo 'N/A')
+    VBMETA_STATE=$(getprop ro.boot.vbmeta.device_state 2>/dev/null || echo 'N/A')
+    BOOTLOADER_STATE=$(getprop ro.boot.flash.locked 2>/dev/null || echo 'N/A')
+    SELINUX_STATE=$(getprop ro.boot.selinux 2>/dev/null || echo 'N/A')
+    DEBUG_STATE=$(getprop ro.debuggable 2>/dev/null || echo 'N/A')
+    
+    # Analyze boot state impact
+    if [ "$BOOT_STATE" = "green" ]; then
+        BOOT_IMPACT="[GOOD] Verified boot intact"
+    elif [ "$BOOT_STATE" = "yellow" ]; then
+        BOOT_IMPACT="[MODERATE] Custom key used"
+    elif [ "$BOOT_STATE" = "orange" ]; then
+        BOOT_IMPACT="[HIGH] Bootloader unlocked"
+    elif [ "$BOOT_STATE" = "red" ]; then
+        BOOT_IMPACT="[CRITICAL] Boot verification failed"
+    else
+        BOOT_IMPACT="[UNKNOWN] Unable to determine"
+    fi
+    
+    append_safe "| Verified Boot | $BOOT_STATE | $BOOT_IMPACT |" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "| VBMeta State | $VBMETA_STATE | $([ "$VBMETA_STATE" = "locked" ] && echo "[GOOD] Locked" || echo "[HIGH] Unlocked/Modified") |" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "| Bootloader | $BOOTLOADER_STATE | $([ "$BOOTLOADER_STATE" = "1" ] && echo "[GOOD] Locked" || echo "[HIGH] Unlocked") |" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "| SELinux | $SELINUX_STATE | $([ "$SELINUX_STATE" = "enforcing" ] && echo "[GOOD] Enforcing" || echo "[MODERATE] Permissive") |" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "| Debug State | $DEBUG_STATE | $([ "$DEBUG_STATE" = "0" ] && echo "[GOOD] Production build" || echo "[MODERATE] Debug build") |" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+else
+    append_safe "| Error | getprop not available | [CRITICAL] Cannot analyze |" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+fi
+
+append_safe "" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+
+# Root detection analysis
+append_safe "### Root Detection Analysis" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+
+if [ "$ROOT_STATUS" = "Magisk" ]; then
+    append_safe "**Root Management:** Magisk detected" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "**Hide Method:** MagiskHide/Zygisk required for Play Integrity" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    
+    # Check for hiding modules
+    HIDE_MODULES_FOUND=false
+    
+    if [ -d "/data/adb/modules/shamiko" ]; then
+        append_safe "✅ **Shamiko** - Advanced hiding module detected" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+        HIDE_MODULES_FOUND=true
+        if [ -f "/data/adb/shamiko/whitelist" ]; then
+            WHITELIST_COUNT=$(wc -l < /data/adb/shamiko/whitelist 2>/dev/null || echo "0")
+            append_safe "   - Whitelist entries: $WHITELIST_COUNT" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+        fi
+    fi
+    
+    if [ -d "/data/adb/modules/zygisksu" ]; then
+        append_safe "✅ **ZygiskSU** - Root hiding module detected" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+        HIDE_MODULES_FOUND=true
+    fi
+    
+    if [ "$HIDE_MODULES_FOUND" = false ]; then
+        append_safe "⚠️ **No hiding modules detected** - Root may be easily detectable" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    fi
+    
+elif [ "$ROOT_STATUS" = "KernelSU" ]; then
+    append_safe "**Root Management:** KernelSU detected" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "**Hide Method:** KernelSU built-in hiding + modules required" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+else
+    append_safe "**Root Management:** $ROOT_STATUS" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "**Risk Level:** High - Non-standard root may be easily detectable" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+fi
+
+append_safe "" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+
+# Play Integrity module analysis
+append_safe "### Play Integrity Modules Analysis" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+
+PIF_DETECTED=false
+TRICKY_DETECTED=false
+SAFETY_DETECTED=false
+
+# Check for PIF
+if [ -d "/data/adb/modules/pif" ] || [ -d "/data/adb/modules/playintegrityfix" ] || [ -f "/data/adb/pif.json" ]; then
+    append_safe "✅ **Play Integrity Fix (PIF)** - Detected" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    PIF_DETECTED=true
+    
+    if [ -f "/data/adb/pif.json" ]; then
+        append_safe "   - Configuration: /data/adb/pif.json found" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+        
+        # Analyze PIF configuration
+        if grep -q "DEVICE" /data/adb/pif.json 2>/dev/null; then
+            append_safe "   - Status: Device spoofing configured" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+        fi
+        if grep -q "FINGERPRINT" /data/adb/pif.json 2>/dev/null; then
+            append_safe "   - Status: Fingerprint spoofing configured" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+        fi
+    else
+        append_safe "   - Configuration: ⚠️ No pif.json found - may not be active" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    fi
+fi
+
+# Check for TrickyStore
+if [ -d "/data/adb/modules/trickystore" ]; then
+    append_safe "✅ **TrickyStore** - Advanced attestation spoofing detected" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    TRICKY_DETECTED=true
+    
+    if [ -f "/data/adb/tricky_store/keybox.xml" ]; then
+        append_safe "   - Keybox: Configured" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    else
+        append_safe "   - Keybox: ⚠️ Not configured - TrickyStore inactive" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    fi
+    
+    if [ -f "/data/adb/tricky_store/target.txt" ]; then
+        TARGET_COUNT=$(wc -l < /data/adb/tricky_store/target.txt 2>/dev/null || echo "0")
+        append_safe "   - Target apps: $TARGET_COUNT configured" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    fi
+fi
+
+# Check for SafetyNet Fix
+if [ -d "/data/adb/modules/safetynetfix" ] || [ -d "/data/adb/modules/universal-safetynet-fix" ]; then
+    append_safe "✅ **SafetyNet Fix** - Legacy module detected" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "   - Note: May not work with current Play Integrity API" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    SAFETY_DETECTED=true
+fi
+
+if [ "$PIF_DETECTED" = false ] && [ "$TRICKY_DETECTED" = false ] && [ "$SAFETY_DETECTED" = false ]; then
+    append_safe "❌ **No Play Integrity modules detected**" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "   - Risk: Very High - Device will fail integrity checks" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+fi
+
+append_safe "" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+
+# Comprehensive recommendations
+append_safe "## 🎯 Comprehensive Play Integrity Strategy" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+
+append_safe "### Priority 1: Essential Modules" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+
+if [ "$PIF_DETECTED" = false ]; then
+    append_safe "#### 🔥 CRITICAL: Install Play Integrity Fix (PIF)" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "**Module:** Play Integrity Fix (osm0sis)" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "**Download:** https://github.com/osm0sis/PlayIntegrityFix/releases" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "**Installation:**" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "1. Download latest PIF module zip" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "2. Install via Magisk Manager" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "3. Reboot device" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "4. Configure /data/adb/pif.json with valid fingerprint" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    
+    append_safe "**Sample PIF Configuration:**" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "\`\`\`json" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "{" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "  \"DEVICE\": \"redfin\"," "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "  \"FINGERPRINT\": \"google/redfin/redfin:13/TQ3A.230805.001/10316531:user/release-keys\"," "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "  \"MODEL\": \"Pixel 5\"," "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "  \"MANUFACTURER\": \"Google\"," "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "  \"BRAND\": \"google\"," "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "  \"PRODUCT\": \"redfin\"," "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "  \"SECURITY_PATCH\": \"2023-08-05\"," "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "  \"FIRST_API_LEVEL\": \"30\"" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "}" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "\`\`\`" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+fi
+
+if [ "$TRICKY_DETECTED" = false ]; then
+    append_safe "#### ⭐ RECOMMENDED: Install TrickyStore" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "**Module:** TrickyStore (5ec1cff)" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "**Purpose:** Advanced hardware attestation spoofing" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "**Download:** https://github.com/5ec1cff/TrickyStore/releases" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "**Requirements:**" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "- Valid keybox.xml file" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "- Target application configuration" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "- LSPosed framework (recommended)" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+fi
+
+append_safe "### Priority 2: Root Hiding" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+
+if [ "$ROOT_STATUS" = "Magisk" ]; then
+    if [ ! -d "/data/adb/modules/shamiko" ]; then
+        append_safe "#### 🛡️ Install Shamiko (Advanced MagiskHide)" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+        append_safe "**Module:** Shamiko" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+        append_safe "**Download:** https://github.com/LSPosed/LSPosed.github.io/releases" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+        append_safe "**Features:**" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+        append_safe "- Advanced root hiding capabilities" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+        append_safe "- Per-app whitelist configuration" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+        append_safe "- Better than legacy MagiskHide" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+        append_safe "" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    fi
+    
+    append_safe "#### ⚙️ Magisk Configuration" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "**Essential Settings:**" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "1. Enable Zygisk in Magisk settings" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "2. Disable Magisk app in Play Store apps if needed" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "3. Use DenyList for sensitive applications" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "4. Hide Magisk app icon/name if required" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    
+elif [ "$ROOT_STATUS" = "KernelSU" ]; then
+    append_safe "#### ⚙️ KernelSU Configuration" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "**Essential Settings:**" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "1. Enable root hiding in KernelSU manager" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "2. Configure app whitelist/blacklist" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "3. Install compatible hiding modules" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "4. Consider SUSFS module for advanced hiding" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+fi
+
+# Device-specific recommendations
+append_safe "### Priority 3: Device-Specific Considerations" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+
+# Analyze device characteristics for specific recommendations
+if command -v getprop >/dev/null 2>&1; then
+    ANDROID_VERSION=$(getprop ro.build.version.release 2>/dev/null || echo 'N/A')
+    SECURITY_PATCH=$(getprop ro.build.version.security_patch 2>/dev/null || echo 'N/A')
+    DEVICE_NAME=$(getprop ro.product.device 2>/dev/null || echo 'N/A')
+    
+    append_safe "#### 📱 Current Device Analysis" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "**Android Version:** $ANDROID_VERSION" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "**Security Patch:** $SECURITY_PATCH" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "**Device Codename:** $DEVICE_NAME" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    append_safe "" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    
+    # Android version specific recommendations
+    append_safe "#### 🔧 Version-Specific Recommendations" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+    case "$ANDROID_VERSION" in
+        "14"*)
+            append_safe "**Android 14 Considerations:**" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+            append_safe "- Use latest PIF with Android 14 support" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+            append_safe "- TrickyStore highly recommended for hardware attestation" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+            append_safe "- Ensure modules are Android 14 compatible" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+            ;;
+        "13"*)
+            append_safe "**Android 13 Considerations:**" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+            append_safe "- Most stable for Play Integrity bypass" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+            append_safe "- PIF + TrickyStore combination works well" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+            append_safe "- Good module compatibility" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+            ;;
+        "12"*)
+            append_safe "**Android 12 Considerations:**" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+            append_safe "- Legacy PIF versions may work better" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+            append_safe "- Check module compatibility with Android 12" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+            ;;
+        *)
+            append_safe "**General Recommendations:**" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+            append_safe "- Verify module compatibility with Android $ANDROID_VERSION" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+            append_safe "- Use latest stable versions of bypass modules" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+            ;;
+    esac
+    append_safe "" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+fi
+
+# Testing and validation section
+append_safe "### Priority 4: Testing & Validation" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "#### 🧪 Recommended Testing Apps" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "1. **Play Integrity API Checker** - Test current status" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "2. **YASNAC** (Yet Another SafetyNet Attestation Checker)" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "3. **TB Checker** - Root detection testing" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "4. **Banking apps** - Real-world testing" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+
+append_safe "#### 📋 Testing Checklist" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "- [ ] Basic integrity: MEETS_BASIC_INTEGRITY" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "- [ ] Device integrity: MEETS_DEVICE_INTEGRITY" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "- [ ] Strong integrity: MEETS_STRONG_INTEGRITY" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "- [ ] Hardware attestation: Valid certificate chain" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "- [ ] App-specific testing: Banking/payment apps work" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+
+# Troubleshooting section
+append_safe "### 🔧 Advanced Troubleshooting" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "#### Common Issues & Solutions" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "**Issue: MEETS_BASIC_INTEGRITY fails**" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "- Solution: Install/reconfigure PIF module" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "- Check: Valid fingerprint in pif.json" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "- Verify: Module is active and loaded" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+
+append_safe "**Issue: MEETS_DEVICE_INTEGRITY fails**" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "- Solution: Enable better root hiding (Shamiko/DenyList)" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "- Check: Bootloader status and verified boot" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "- Consider: Stock ROM fingerprint spoofing" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+
+append_safe "**Issue: MEETS_STRONG_INTEGRITY fails**" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "- Solution: Install TrickyStore with valid keybox" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "- Requirement: Hardware attestation spoofing" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "- Note: Most difficult to achieve on rooted devices" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+
+append_safe "#### 🔗 Useful Resources" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "- **XDA Forums:** Play Integrity discussion threads" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "- **GitHub:** Module repositories and issue trackers" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "- **Telegram:** Magisk and root hiding communities" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "- **Reddit:** r/Magisk and r/Android communities" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+
+append_safe "---" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "*This analysis is generated automatically based on your current system state.*" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "*Recommendations may need adjustment based on your specific device and use case.*" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+append_safe "" "$PLAY_INTEGRITY_FILE" "Play Integrity"
+
+log_success "Play Integrity analysis saved to 09-play-integrity.md"
+
 # Add missing sections to complete the 6-services file
 append_safe "# System Services and Hardware" "$SERVICES_FILE" "Services Info"
 append_safe "" "$SERVICES_FILE" "Services Info"
@@ -1109,7 +1443,7 @@ append_safe "" "$SUMMARY_FILE" "Summary"
 append_safe "## Analysis Complete" "$SUMMARY_FILE" "Summary"
 append_safe "" "$SUMMARY_FILE" "Summary"
 append_safe "**Export completed:** $(date 2>/dev/null || echo 'Date unavailable')" "$SUMMARY_FILE" "Summary"
-append_safe "**Total files generated:** 9" "$SUMMARY_FILE" "Summary"
+append_safe "**Total files generated:** 10" "$SUMMARY_FILE" "Summary"
 append_safe "" "$SUMMARY_FILE" "Summary"
 append_safe "*Generated by Speccy v4.1 - Universal Android Device Analyzer with Root Module Analysis*" "$SUMMARY_FILE" "Summary"
 
@@ -1120,7 +1454,7 @@ echo "════════════════════════�
 
 # Verify all files were created
 TOTAL_FILES=0
-for file in "$SUMMARY_FILE" "$DEVICE_FILE" "$KERNEL_FILE" "$BOOT_FILE" "$ROOT_MODULES_FILE" "$HARDWARE_FILE" "$STORAGE_FILE" "$SERVICES_FILE" "$SOFTWARE_FILE"; do
+for file in "$SUMMARY_FILE" "$DEVICE_FILE" "$KERNEL_FILE" "$BOOT_FILE" "$ROOT_MODULES_FILE" "$HARDWARE_FILE" "$STORAGE_FILE" "$SERVICES_FILE" "$SOFTWARE_FILE" "$PLAY_INTEGRITY_FILE"; do
     if [ -f "$file" ]; then
         TOTAL_FILES=$((TOTAL_FILES + 1))
     else
@@ -1129,7 +1463,7 @@ for file in "$SUMMARY_FILE" "$DEVICE_FILE" "$KERNEL_FILE" "$BOOT_FILE" "$ROOT_MO
 done
 
 echo "[INFO] Output Directory: $OUTPUT_DIR"
-echo "[INFO] Files Generated: $TOTAL_FILES/9"
+echo "[INFO] Files Generated: $TOTAL_FILES/10"
 echo "[INFO] Analysis ID: ${DATE_STR}"
 echo ""
 echo "[INFO] Generated Files:"
@@ -1142,10 +1476,11 @@ echo "  • 05-hardware.md       - CPU, memory, and hardware details"
 echo "  • 06-storage.md        - Storage, partitions, and file systems"
 echo "  • 07-services.md       - System services and hardware interfaces"
 echo "  • 08-software.md       - Installed packages and applications"
+echo "  • 09-play-integrity.md - Play Integrity analysis and recommendations"
 echo "  • export.log           - Analysis process log and error details"
 echo ""
 
-if [ "$TOTAL_FILES" -eq 9 ]; then
+if [ "$TOTAL_FILES" -eq 10 ]; then
     echo "[SUCCESS] All files generated successfully!"
     echo "[INFO] View summary: cat \"$SUMMARY_FILE\""
     echo "[INFO] Browse directory: ls -la \"$OUTPUT_DIR\""

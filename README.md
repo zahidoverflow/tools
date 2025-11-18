@@ -33,16 +33,25 @@ A curated collection of lightweight, practical tools for development, testing, s
 - **Root Module Analysis:** Deep inspection of Magisk/KernelSU modules with configuration details
 - **Module Configurations:** PIF settings, TrickyStore keybox, Shamiko whitelist, LSPosed modules, SUSFS config
 - **Popular Module Detection:** Automatic detection of PIF, TrickyStore, Shamiko, LSPosed, SUSFS, SafetyNet Fix
+- **Play Integrity Analysis:** Comprehensive analysis and recommendations for achieving strong integrity
 - **Boot & Security:** Verified boot state, VBMeta analysis, bootloader status, SELinux configuration
 - **Hardware Analysis:** CPU specs, memory details, storage overview, partition analysis
 - **System Services:** Battery management, display configuration, hardware services
 - **Software Inventory:** Package analysis, activity manager, system software overview
 
-#### New in v4.1
+#### New in v4.2
+- **🆕 Play Integrity Analysis:** Comprehensive guide for achieving strong integrity on rooted devices
+- **🆕 LLM-Friendly Format:** Structured output for AI-assisted troubleshooting and recommendations
+- **🆕 Root Hiding Strategy:** Step-by-step configuration guide for PIF, TrickyStore, and Shamiko
+- **🆕 Device-Specific Recommendations:** Tailored advice based on Android version and device characteristics
+- **🆕 Testing Methodology:** Built-in checklist and validation steps for integrity bypass
+- **🆕 Troubleshooting Guide:** Common issues and solutions with detailed resolution steps
+
+#### Previous Updates (v4.1)
 - **🆕 Dedicated Root Modules File:** Complete module analysis with configurations
 - **🆕 Deep Module Inspection:** Full module.prop reading, status detection, file analysis
 - **🆕 Configuration Export:** PIF.json, TrickyStore keybox, Shamiko whitelist, SUSFS config
-- **🆕 Multi-File Output:** 9 organized files instead of single overwhelming document
+- **🆕 Multi-File Output:** Organized files instead of single overwhelming document
 - **🆕 Professional Interface:** Clean logging without emojis, structured progress indicators
 
 #### Output Structure
@@ -58,6 +67,7 @@ Speccy-YYYYMMDDHHMM/
 ├── 06-storage.md         # Storage, partitions, and file systems
 ├── 07-services.md        # System services and hardware interfaces
 ├── 08-software.md        # Installed packages and applications
+├── 09-play-integrity.md  # Play Integrity analysis and recommendations
 └── export.log           # Analysis process log and error details
 ```
 
@@ -83,6 +93,7 @@ chmod +x speccy.sh
 cd Speccy-*
 cat 00-SUMMARY.md                    # Overview and file index
 cat 04-root-modules.md               # Root modules and configurations
+cat 09-play-integrity.md            # Play Integrity analysis and recommendations
 ls -la                               # Browse all generated files
 ```
 
@@ -101,6 +112,9 @@ su -c './speccy.sh'
 - Hardware compatibility verification for ROM ports
 - Security research and integrity analysis
 - Magisk module compatibility testing
+- **Play Integrity troubleshooting** for banking apps and security-sensitive applications
+- **Root hiding configuration** optimization for maximum stealth
+- **LLM-assisted analysis** for personalized recommendations and solution strategies
 
 ## 🚀 Installation
 
