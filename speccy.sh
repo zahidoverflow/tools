@@ -76,10 +76,18 @@ log_warning() {
 
 log_error() {
     echo "❌ $1" >&2
+    # Log errors to file
+    if [ -n "$LOG_OUT" ]; then
+        echo "$(date 2>/dev/null || echo 'Date unavailable') [ERROR] $1" >> "$LOG_OUT" 2>/dev/null
+    fi
 }
 
 log_critical() {
     echo "🚨 CRITICAL: $1" >&2
+    # Log critical errors to file
+    if [ -n "$LOG_OUT" ]; then
+        echo "$(date 2>/dev/null || echo 'Date unavailable') [CRITICAL] $1" >> "$LOG_OUT" 2>/dev/null
+    fi
 }
 
 handle_error() {
@@ -87,9 +95,26 @@ handle_error() {
     local error_msg="$2"
     local suggestion="$3"
     
+    # Initialize log file if not exists
+    if [ -n "$LOG_OUT" ] && [ ! -f "$LOG_OUT" ]; then
+        echo "=== SPECCY ERROR LOG ===" > "$LOG_OUT" 2>/dev/null
+        echo "Generated: $(date 2>/dev/null || echo 'Date unavailable')" >> "$LOG_OUT" 2>/dev/null
+        echo "========================" >> "$LOG_OUT" 2>/dev/null
+        echo "" >> "$LOG_OUT" 2>/dev/null
+    fi
+    
     log_critical "$error_msg"
     [ -n "$suggestion" ] && echo "💡 Suggestion: $suggestion"
     echo "🔍 Error Code: $error_code"
+    
+    # Log additional details to file
+    if [ -n "$LOG_OUT" ]; then
+        echo "Error Code: $error_code" >> "$LOG_OUT" 2>/dev/null
+        echo "Suggestion: $suggestion" >> "$LOG_OUT" 2>/dev/null
+        echo "---" >> "$LOG_OUT" 2>/dev/null
+        echo "" >> "$LOG_OUT" 2>/dev/null
+    fi
+    
     exit "$error_code"
 }
 
@@ -121,8 +146,18 @@ safe_execute() {
         return 0
     else
         local exit_code=$?
+        local error_msg="Failed to execute command: $cmd"
+        
+        # Log to error file
+        if [ -n "$LOG_OUT" ]; then
+            echo "$(date 2>/dev/null || echo 'Date unavailable') [COMMAND_FAIL] $error_msg" >> "$LOG_OUT" 2>/dev/null
+            echo "Description: $description" >> "$LOG_OUT" 2>/dev/null
+            echo "Exit Code: $exit_code" >> "$LOG_OUT" 2>/dev/null
+            echo "---" >> "$LOG_OUT" 2>/dev/null
+        fi
+        
         if [ "$is_critical" = "true" ]; then
-            handle_error 4 "Failed to execute critical command: $cmd" "Check if required tools are installed and accessible"
+            handle_error 4 "$error_msg" "Check if required tools are installed and accessible"
         else
             log_warning "Non-critical command failed: $cmd (continuing...)"
             return $exit_code
@@ -145,9 +180,24 @@ append_safe() {
 
 cleanup_on_exit() {
     local exit_code=$?
-    if [ $exit_code -ne 0 ] && [ -f "$OUT" ]; then
-        log_info "Cleaning up incomplete file due to error..."
-        rm -f "$OUT" 2>/dev/null
+    if [ $exit_code -ne 0 ]; then
+        if [ -f "$OUT" ]; then
+            log_info "Cleaning up incomplete file due to error..."
+            rm -f "$OUT" 2>/dev/null
+        fi
+        
+        # Ensure log file is created with final status
+        if [ -n "$LOG_OUT" ] && [ ! -f "$LOG_OUT" ]; then
+            echo "=== SPECCY ERROR LOG ===" > "$LOG_OUT" 2>/dev/null
+            echo "Generated: $(date 2>/dev/null || echo 'Date unavailable')" >> "$LOG_OUT" 2>/dev/null
+            echo "========================" >> "$LOG_OUT" 2>/dev/null
+            echo "" >> "$LOG_OUT" 2>/dev/null
+        fi
+        
+        if [ -n "$LOG_OUT" ]; then
+            echo "$(date 2>/dev/null || echo 'Date unavailable') [EXIT] Script terminated with error code: $exit_code" >> "$LOG_OUT" 2>/dev/null
+            echo "📄 Error log created: $LOG_OUT" >&2
+        fi
     fi
 }
 
@@ -240,28 +290,31 @@ if [ -n "$MISSING_OPTIONAL" ]; then
 fi
 
 # ---------- OUTPUT PATH DETECTION ----------
-# Generate date-formatted filename
-if ! DATE_STR=$(date '+%d-%m-%y' 2>/dev/null); then
+# Generate timestamp-formatted filename (YYYYMMDDHHMM)
+if ! DATE_STR=$(date '+%Y%m%d%H%M' 2>/dev/null); then
     log_warning "Standard date command failed, using fallback"
-    DATE_STR=$(date 2>/dev/null | cut -d' ' -f3,2,6 | sed 's/ /-/g' | cut -c1-8 2>/dev/null || echo "unknown")
-fi
-
-if [ "$DATE_STR" = "unknown" ]; then
-    log_warning "Date detection failed, using timestamp"
-    DATE_STR="$(date +%s 2>/dev/null || echo 'nodate')"
+    # Fallback for different date implementations
+    if ! DATE_STR=$(date '+%Y%m%d%H%M' 2>/dev/null); then
+        log_warning "Date formatting failed, using epoch timestamp"
+        DATE_STR="$(date +%s 2>/dev/null || echo 'nodate')"
+    fi
 fi
 
 FILENAME="speccy-${DATE_STR}.md"
+LOG_FILE="speccy-${DATE_STR}.log"
 
 # Determine output path
 if [ "$ANDROID_ENV" = true ] && [ -d "/sdcard/Download" ]; then
     OUT="/sdcard/Download/$FILENAME"
+    LOG_OUT="/sdcard/Download/$LOG_FILE"
     log_info "Output: Android Downloads directory"
 elif [ -d "$HOME/Downloads" ]; then
     OUT="$HOME/Downloads/$FILENAME"
+    LOG_OUT="$HOME/Downloads/$LOG_FILE"
     log_info "Output: User Downloads directory"
 else
     OUT="./$FILENAME"
+    LOG_OUT="./$LOG_FILE"
     log_info "Output: Current directory"
 fi
 
