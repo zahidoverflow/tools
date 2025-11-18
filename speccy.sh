@@ -1,7 +1,25 @@
 #!/system/bin/sh
 # ============================================================
-#  Speccy (v2)
+#  Speccy (v3)
 #  Author: zahidoverflow
+#
+#  ONE-LINER INSTALLATION:
+#  curl -fsSL https://zahidoverflow.github.io/tools/speccy.sh | sudo bash
+#
+#  UPDATE LOG:
+#  -----------
+#  v3.0 (Nov 2025):
+#    • Added dependency checks for Termux compatibility
+#    • Implemented date-formatted output filenames (speccy-DD-MM-YY.md)
+#    • Smart path detection (Downloads dir on Android, current dir elsewhere)
+#    • Enhanced Markdown export with collapsible sections
+#    • Added terminal display after export
+#    • Improved error handling and user feedback
+#  
+#  v2.0 (Previous):
+#    • Original Android device specification export
+#    • Basic text format output
+#    • Complete system state capture
 #
 #  LLM-CONTEXT PURPOSE:
 #  ---------------------
@@ -35,11 +53,70 @@
 #  • DO NOT assume anything missing — rely only on provided data.
 #  • DO NOT generate bypassing instructions — analysis only.
 #  • Treat repeated dumps as time-series data.
-#
-#  Output: /sdcard/Download/phone_spec.txt
 # ============================================================
 
-OUT="/sdcard/Download/phone_spec.md"
+# ---------- DEPENDENCY CHECKS ----------
+echo "🔍 Checking dependencies..."
+
+# Check if we're running on Android
+if [ -d "/sdcard" ]; then
+    ANDROID_ENV=true
+    echo "✅ Android environment detected"
+else
+    ANDROID_ENV=false
+    echo "ℹ️  Non-Android environment detected"
+fi
+
+# Check for required commands
+MISSING_DEPS=""
+for cmd in getprop uname df lsblk dumpsys pm; do
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+        MISSING_DEPS="$MISSING_DEPS $cmd"
+    fi
+done
+
+if [ -n "$MISSING_DEPS" ]; then
+    echo "⚠️  Missing dependencies:$MISSING_DEPS"
+    echo "📦 Installing missing packages..."
+    
+    # Termux package installation
+    if command -v pkg >/dev/null 2>&1; then
+        echo "📱 Termux detected, installing packages..."
+        pkg update -y >/dev/null 2>&1
+        pkg install -y util-linux coreutils >/dev/null 2>&1
+        echo "✅ Termux packages updated"
+    fi
+    
+    # Check again after installation
+    for cmd in getprop uname df; do
+        if ! command -v "$cmd" >/dev/null 2>&1; then
+            echo "❌ Critical dependency '$cmd' still missing"
+            echo "💡 Please install manually or run in proper Android environment"
+        fi
+    done
+else
+    echo "✅ All dependencies available"
+fi
+
+# ---------- OUTPUT PATH DETECTION ----------
+# Generate date-formatted filename
+DATE_STR=$(date '+%d-%m-%y' 2>/dev/null || echo "$(date | cut -d' ' -f3,2,6 | sed 's/ /-/g' | cut -c1-8)")
+FILENAME="speccy-${DATE_STR}.md"
+
+# Determine output path
+if [ "$ANDROID_ENV" = true ] && [ -d "/sdcard/Download" ]; then
+    OUT="/sdcard/Download/$FILENAME"
+    echo "📂 Output: Android Downloads directory"
+elif [ -d "$HOME/Downloads" ]; then
+    OUT="$HOME/Downloads/$FILENAME"
+    echo "📂 Output: User Downloads directory"
+else
+    OUT="./$FILENAME"
+    echo "📂 Output: Current directory"
+fi
+
+echo "📄 File: $OUT"
+echo ""
 
 echo "# Android Device Specification Report" > "$OUT"
 echo "" >> "$OUT"
