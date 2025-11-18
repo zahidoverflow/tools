@@ -473,7 +473,67 @@ if [ -f "/system/etc/init.d/99SuperSUDaemon" ]; then
     append_safe "**Init scripts:** SuperSU daemon script detected" "$OUT" "Root Mgmt Info"
 fi
 
-log_success "Root management detection completed"
+append_safe "" "$OUT" "Root Mgmt Info"
+
+# ---------- BOOT / VB META / VERIFIED STATE ----------
+log_info "Collecting verified boot state..."
+
+append_safe "## 🔒 Verified Boot State" "$OUT" "VB Info"
+append_safe "" "$OUT" "VB Info"
+
+# Get boot state
+BOOT_STATE=$(getprop ro.boot.verifiedbootstate 2>/dev/null || echo 'N/A')
+append_safe "**Boot State:** $BOOT_STATE" "$OUT" "VB Info"
+
+# Additional boot-related properties
+BOOT_MODE=$(getprop ro.bootmode 2>/dev/null || echo 'N/A')
+append_safe "**Boot Mode:** $BOOT_MODE" "$OUT" "VB Info"
+
+VBMETA_STATE=$(getprop ro.boot.vbmeta.device_state 2>/dev/null || echo 'N/A')
+append_safe "**VBMeta Device State:** $VBMETA_STATE" "$OUT" "VB Info"
+
+append_safe "" "$OUT" "VB Info"
+append_safe "### VBMeta Information" "$OUT" "VB Info"
+append_safe "" "$OUT" "VB Info"
+append_safe "\`\`\`" "$OUT" "VB Info"
+
+# Try multiple VBMeta paths and methods
+VBMETA_FOUND=false
+
+if [ -f "/sys/firmware/devicetree/base/vbmeta/0/algorithm" ]; then
+    append_safe "Algorithm (path 0):" "$OUT" "VB Info"
+    if cat /sys/firmware/devicetree/base/vbmeta/0/algorithm >> "$OUT" 2>/dev/null; then
+        VBMETA_FOUND=true
+    else
+        append_safe "Unable to read algorithm" "$OUT" "VB Info"
+    fi
+fi
+
+if [ -f "/sys/firmware/devicetree/base/vbmeta/0/digest" ]; then
+    append_safe "Digest (path 0):" "$OUT" "VB Info"
+    if cat /sys/firmware/devicetree/base/vbmeta/0/digest >> "$OUT" 2>/dev/null; then
+        VBMETA_FOUND=true
+    else
+        append_safe "Unable to read digest" "$OUT" "VB Info"
+    fi
+fi
+
+# Try alternative paths
+for i in 1 2 3; do
+    if [ -f "/sys/firmware/devicetree/base/vbmeta/$i/algorithm" ]; then
+        append_safe "Algorithm (path $i):" "$OUT" "VB Info"
+        cat /sys/firmware/devicetree/base/vbmeta/$i/algorithm >> "$OUT" 2>/dev/null
+        VBMETA_FOUND=true
+    fi
+done
+
+if [ "$VBMETA_FOUND" = false ]; then
+    append_safe "VBMeta information not accessible via devicetree" "$OUT" "VB Info"
+    append_safe "This is normal on some devices/ROMs" "$OUT" "VB Info"
+fi
+
+append_safe "\`\`\`" "$OUT" "VB Info"
+append_safe "" "$OUT" "VB Info"
 
 # ---------- BOOT / VB META / VERIFIED STATE ----------
 log_info "Collecting verified boot state..."
@@ -548,7 +608,6 @@ append_safe "" "$OUT" "CPU Info"
 append_safe "\`\`\`" "$OUT" "CPU Info"
 if ! cat /proc/cpuinfo >> "$OUT" 2>/dev/null; then
     append_safe "CPU information unavailable" "$OUT" "CPU Info"
-    log_warning "Failed to read /proc/cpuinfo"
 fi
 append_safe "\`\`\`" "$OUT" "CPU Info"
 append_safe "" "$OUT" "CPU Info"
@@ -563,14 +622,11 @@ append_safe "" "$OUT" "Memory Info"
 append_safe "\`\`\`" "$OUT" "Memory Info"
 if ! cat /proc/meminfo >> "$OUT" 2>/dev/null; then
     append_safe "Memory information unavailable" "$OUT" "Memory Info"
-    log_warning "Failed to read /proc/meminfo"
 fi
 append_safe "\`\`\`" "$OUT" "Memory Info"
 append_safe "" "$OUT" "Memory Info"
 append_safe "</details>" "$OUT" "Memory Info"
 append_safe "" "$OUT" "Memory Info"
-
-log_success "Hardware information collected"
 
 # ---------- STORAGE + PARTITIONS ----------
 log_info "Collecting storage and partition information..."
@@ -596,7 +652,6 @@ PART_INFO_FOUND=false
 if command -v lsblk >/dev/null 2>&1; then
     if lsblk >> "$OUT" 2>/dev/null && [ $? -eq 0 ]; then
         PART_INFO_FOUND=true
-        log_success "Partition table collected via lsblk"
     fi
 fi
 
@@ -605,7 +660,6 @@ if [ "$PART_INFO_FOUND" = false ] && [ -f "/proc/partitions" ]; then
     append_safe "=== /proc/partitions ===" "$OUT" "Storage Info"
     if cat /proc/partitions >> "$OUT" 2>/dev/null; then
         PART_INFO_FOUND=true
-        log_success "Partition info collected from /proc/partitions"
     fi
 fi
 
@@ -614,14 +668,12 @@ if [ "$PART_INFO_FOUND" = false ] && command -v fdisk >/dev/null 2>&1; then
     append_safe "=== Available block devices ===" "$OUT" "Storage Info"
     if fdisk -l >> "$OUT" 2>/dev/null; then
         PART_INFO_FOUND=true
-        log_success "Partition info collected via fdisk"
     fi
 fi
 
 if [ "$PART_INFO_FOUND" = false ]; then
     append_safe "Partition information unavailable" "$OUT" "Storage Info"
     append_safe "This may be due to permissions or missing tools" "$OUT" "Storage Info"
-    log_warning "Failed to collect partition information via all methods"
 fi
 
 append_safe "\`\`\`" "$OUT" "Storage Info"
@@ -659,9 +711,6 @@ done
 
 if [ "$FSTAB_FOUND" = false ]; then
     append_safe "No accessible FSTAB files found" "$OUT" "Storage Info"
-    log_warning "No FSTAB files could be read"
-else
-    log_success "FSTAB information collected"
 fi
 
 append_safe "\`\`\`" "$OUT" "Storage Info"
@@ -681,7 +730,6 @@ append_safe "\`\`\`" "$OUT" "Display Info"
 if command -v dumpsys >/dev/null 2>&1; then
     if ! dumpsys display >> "$OUT" 2>/dev/null; then
         append_safe "Display service information unavailable" "$OUT" "Display Info"
-        log_warning "Failed to get display service info"
     fi
 else
     append_safe "dumpsys command not available" "$OUT" "Display Info"
@@ -698,7 +746,6 @@ append_safe "\`\`\`" "$OUT" "Display Info"
 if command -v dumpsys >/dev/null 2>&1; then
     if ! dumpsys SurfaceFlinger | head -n 120 >> "$OUT" 2>/dev/null; then
         append_safe "SurfaceFlinger information unavailable" "$OUT" "Display Info"
-        log_warning "Failed to get SurfaceFlinger info"
     fi
 else
     append_safe "dumpsys command not available" "$OUT" "Display Info"
@@ -718,7 +765,6 @@ append_safe "\`\`\`" "$OUT" "Power Info"
 if command -v dumpsys >/dev/null 2>&1; then
     if ! dumpsys battery >> "$OUT" 2>/dev/null; then
         append_safe "Battery information unavailable" "$OUT" "Power Info"
-        log_warning "Failed to get battery info"
     fi
 else
     append_safe "dumpsys command not available" "$OUT" "Power Info"
@@ -733,7 +779,6 @@ append_safe "\`\`\`" "$OUT" "Power Info"
 if command -v dumpsys >/dev/null 2>&1; then
     if ! dumpsys power >> "$OUT" 2>/dev/null; then
         append_safe "Power management information unavailable" "$OUT" "Power Info"
-        log_warning "Failed to get power management info"
     fi
 else
     append_safe "dumpsys command not available" "$OUT" "Power Info"
@@ -755,7 +800,6 @@ append_safe "\`\`\`" "$OUT" "Connectivity Info"
 if command -v dumpsys >/dev/null 2>&1; then
     if ! dumpsys wifi >> "$OUT" 2>/dev/null; then
         append_safe "WiFi service information unavailable" "$OUT" "Connectivity Info"
-        log_warning "Failed to get WiFi service info"
     fi
 else
     append_safe "dumpsys command not available" "$OUT" "Connectivity Info"
@@ -772,7 +816,6 @@ append_safe "\`\`\`" "$OUT" "Connectivity Info"
 if command -v dumpsys >/dev/null 2>&1; then
     if ! dumpsys telephony.registry >> "$OUT" 2>/dev/null; then
         append_safe "Telephony registry information unavailable" "$OUT" "Connectivity Info"
-        log_warning "Failed to get telephony registry info"
     fi
 else
     append_safe "dumpsys command not available" "$OUT" "Connectivity Info"
@@ -789,7 +832,6 @@ append_safe "\`\`\`" "$OUT" "Connectivity Info"
 if command -v dumpsys >/dev/null 2>&1; then
     if ! dumpsys phone >> "$OUT" 2>/dev/null; then
         append_safe "Phone service information unavailable" "$OUT" "Connectivity Info"
-        log_warning "Failed to get phone service info"
     fi
 else
     append_safe "dumpsys command not available" "$OUT" "Connectivity Info"
@@ -811,7 +853,6 @@ append_safe "\`\`\`" "$OUT" "Sensor Info"
 if command -v dumpsys >/dev/null 2>&1; then
     if ! dumpsys sensorservice >> "$OUT" 2>/dev/null; then
         append_safe "Sensor service information unavailable" "$OUT" "Sensor Info"
-        log_warning "Failed to get sensor service info"
     fi
 else
     append_safe "dumpsys command not available" "$OUT" "Sensor Info"
@@ -833,7 +874,6 @@ append_safe "\`\`\`" "$OUT" "Software Info"
 if command -v pm >/dev/null 2>&1; then
     if ! pm list packages >> "$OUT" 2>/dev/null; then
         append_safe "Package list unavailable" "$OUT" "Software Info"
-        log_warning "Failed to get package list"
     fi
 else
     append_safe "pm command not available" "$OUT" "Software Info"
@@ -850,7 +890,6 @@ append_safe "\`\`\`" "$OUT" "Software Info"
 if command -v dumpsys >/dev/null 2>&1; then
     if ! dumpsys activity activities | head -n 150 >> "$OUT" 2>/dev/null; then
         append_safe "Activity manager information unavailable" "$OUT" "Software Info"
-        log_warning "Failed to get activity manager info"
     fi
 else
     append_safe "dumpsys command not available" "$OUT" "Software Info"
@@ -860,15 +899,16 @@ append_safe "" "$OUT" "Software Info"
 append_safe "</details>" "$OUT" "Software Info"
 append_safe "" "$OUT" "Software Info"
 
-log_success "All information collection completed"
-
 # ---------- FINAL OUTPUT ----------
 append_safe "---" "$OUT" "Footer"
 append_safe "" "$OUT" "Footer"
 append_safe "**Report generated by speccy.sh**" "$OUT" "Footer"
 append_safe "**Export completed:** $(date 2>/dev/null || echo 'Date unavailable')" "$OUT" "Footer"
 
-log_success "Spec exported to: $OUT"
+echo ""
+echo "════════════════════════════════════════════════════════"
+echo "🎉 SPECCY EXPORT COMPLETED SUCCESSFULLY"
+echo "════════════════════════════════════════════════════════"
 
 # Verify file was created and has content
 if [ ! -f "$OUT" ]; then
@@ -880,15 +920,24 @@ if [ "$file_size" -lt 100 ]; then
     handle_error 3 "Output file appears to be empty or corrupted" "Check if all commands executed properly"
 fi
 
-log_info "File size: $file_size bytes"
-log_info "Displaying content in terminal:"
+echo "📄 Report File: $OUT"
+echo "📊 File Size: $file_size bytes"
+echo "📅 Timestamp: $(date 2>/dev/null || echo 'Date unavailable')"
 echo ""
+echo "🔍 REPORT PREVIEW (First 50 lines):"
+echo "────────────────────────────────────────────────────────"
 
-# Safe file display with error handling
-if ! cat "$OUT" 2>/dev/null; then
-    log_error "Failed to display file content"
-    log_info "File location: $OUT"
-    exit 3
+# Show only a preview of the file, not the entire content
+if ! head -n 50 "$OUT" 2>/dev/null; then
+    log_error "Failed to display file preview"
+    echo "File location: $OUT"
+else
+    echo ""
+    echo "────────────────────────────────────────────────────────"
+    echo "📖 Full report available at: $OUT"
+    echo "💡 Use 'cat $OUT' to view complete content"
+    echo "💡 Use 'less $OUT' for paginated viewing"
 fi
 
+echo ""
 log_success "Export completed successfully!"
