@@ -29,38 +29,41 @@ A curated collection of lightweight, practical tools for development, testing, s
 
 #### Features
 - **Device Information:** Model, build fingerprint, Android version, security patch level
-- **Kernel Analysis:** Kernel version, KernelSU status, boot state verification
+- **Kernel Analysis:** Kernel version, root detection, boot state verification
+- **Root Management:** Detects Magisk, KernelSU, SuperSU, and custom root solutions
 - **System State:** CPU info, memory usage, storage analysis, partition layout
 - **Hardware Details:** Display configuration, battery status, sensors, telephony
-- **Security Context:** Verified boot state, vbmeta digest, root environment
+- **Security Context:** Verified boot state, vbmeta digest, integrity analysis
 - **Package Analysis:** Complete list of installed packages and system activities
+
+#### Compatibility
+Works with any rooted Android device including:
+- **Magisk** rooted devices (with module detection)
+- **KernelSU** rooted devices
+- **SuperSU** legacy rooted devices
+- **Custom ROM** devices with built-in root
+- **AOSP** builds with root access
 
 #### Usage
 ```bash
-# Make executable
-chmod +x speccy.sh
+# One-liner installation and execution
+curl -fsSL https://zahidoverflow.github.io/tools/speccy.sh | sudo bash
 
-# Run the analyzer (requires root)
+# Or manual execution
+chmod +x speccy.sh
 su -c './speccy.sh'
 
-# Output will be saved to:
-# /sdcard/Download/phone_spec.txt
+# Output will be saved as:
+# speccy-YYYYMMDDHHMM.md (e.g., speccy-202511181746.md)
 ```
 
 #### Use Cases
 - ROM debugging and kernel analysis
 - Root detection research and false-positive verification
 - Device state snapshots for bug reporting
-- Hardware compatibility verification
+- Hardware compatibility verification for ROM ports
 - Security research and integrity analysis
-
-#### Output Format
-The tool generates a comprehensive report including:
-- Device specifications and build information
-- Kernel and root environment details
-- Hardware configuration and sensor data
-- System state and partition information
-- Complete package listings
+- Magisk module compatibility testing
 
 ## 🚀 Installation
 
@@ -86,7 +89,10 @@ adb push speccy.sh /sdcard/
 
 ### Android Device Analysis
 ```bash
-# Transfer and run speccy.sh on Android device
+# One-liner execution
+curl -fsSL https://zahidoverflow.github.io/tools/speccy.sh | sudo bash
+
+# Manual execution
 adb shell
 su
 cd /sdcard/
@@ -94,7 +100,7 @@ chmod +x speccy.sh
 ./speccy.sh
 
 # View the generated report
-cat /sdcard/Download/phone_spec.txt
+cat /sdcard/Download/speccy-202511181746.md
 ```
 
 ## 🎯 Project Philosophy

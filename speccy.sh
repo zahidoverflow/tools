@@ -28,12 +28,21 @@
 #
 #  Its purpose is to give LLMs a *complete & reproducible*
 #  snapshot of the device state for:
-#     - ROM debugging
-#     - kernel, KSU, recovery analysis
-#     - root-detection research
-#     - integrity/boot state changes
-#     - false-positive verification
-#     - reproducible bug bounty reporting
+#     - ROM debugging and analysis
+#     - Kernel analysis and root detection research
+#     - Device integrity and boot state verification
+#     - Hardware compatibility verification
+#     - Security research and false-positive analysis
+#     - Reproducible bug reporting with full device context
+#
+#  COMPATIBILITY:
+#  --------------
+#  Works with any rooted Android device including:
+#     - Magisk rooted devices
+#     - KernelSU rooted devices  
+#     - SuperSU rooted devices
+#     - Custom ROM devices with built-in root
+#     - AOSP builds with root access
 #
 #  LLMs should treat exported file as a TRUSTED SYSTEM SNAPSHOT.
 #  This file represents:
@@ -367,218 +376,491 @@ fi
 append_safe "" "$OUT" "Device Info"
 
 # ---------- KERNEL + ROOT STATE ----------
-echo "## 🔧 Kernel Information" >> "$OUT"
-echo "" >> "$OUT"
-echo "\`\`\`" >> "$OUT"
-uname -a >> "$OUT"
-echo "\`\`\`" >> "$OUT"
-echo "" >> "$OUT"
+log_info "Collecting kernel and root information..."
 
-echo "## 🔐 Root Environment" >> "$OUT"
-echo "" >> "$OUT"
-echo "**su binary:** $(which su 2>/dev/null || echo 'Not found')" >> "$OUT"
-echo "" >> "$OUT"
-echo "\`\`\`" >> "$OUT"
-su -v 2>/dev/null >> "$OUT"
-echo "\`\`\`" >> "$OUT"
-echo "" >> "$OUT"
-
-echo "## ⚙️ KernelSU Status" >> "$OUT"
-echo "" >> "$OUT"
-if [ -f "/sys/fs/ksu/version" ]; then
-  echo "**Version:** $(cat /sys/fs/ksu/version 2>/dev/null)" >> "$OUT"
-  echo "**Enabled:** $(cat /sys/fs/ksu/ksu_enabled 2>/dev/null)" >> "$OUT"
-else
-  echo "KernelSU not detected" >> "$OUT"
+append_safe "## 🔧 Kernel Information" "$OUT" "Kernel Info"
+append_safe "" "$OUT" "Kernel Info"
+append_safe "\`\`\`" "$OUT" "Kernel Info"
+if ! uname -a >> "$OUT" 2>/dev/null; then
+    append_safe "Kernel information unavailable" "$OUT" "Kernel Info"
+    log_warning "Failed to get kernel information"
 fi
-echo "" >> "$OUT"
+append_safe "\`\`\`" "$OUT" "Kernel Info"
+append_safe "" "$OUT" "Kernel Info"
+
+append_safe "## 🔐 Root Environment" "$OUT" "Root Info"
+append_safe "" "$OUT" "Root Info"
+
+# Check for su binary
+SU_BINARY=$(which su 2>/dev/null || echo 'Not found')
+append_safe "**su binary:** $SU_BINARY" "$OUT" "Root Info"
+append_safe "" "$OUT" "Root Info"
+
+# Get su version if available
+if [ "$SU_BINARY" != "Not found" ]; then
+    append_safe "\`\`\`" "$OUT" "Root Info"
+    if ! su -v >> "$OUT" 2>/dev/null; then
+        append_safe "su version information unavailable" "$OUT" "Root Info"
+        SU_VERSION_OUTPUT=""
+    else
+        SU_VERSION_OUTPUT=$(su -v 2>/dev/null || echo '')
+    fi
+    append_safe "\`\`\`" "$OUT" "Root Info"
+else
+    append_safe "**Status:** No root access detected" "$OUT" "Root Info"
+    SU_VERSION_OUTPUT=""
+fi
+append_safe "" "$OUT" "Root Info"
+
+# Enhanced root management detection
+append_safe "## ⚙️ Root Management" "$OUT" "Root Mgmt Info"
+append_safe "" "$OUT" "Root Mgmt Info"
+
+# Detect various root management solutions
+ROOT_METHOD="Unknown"
+ROOT_DETAILS=""
+
+# Check for Magisk
+if [ -f "/data/adb/magisk/magisk" ] || [ -f "/sbin/magisk" ] || [ -d "/data/adb/magisk" ]; then
+    ROOT_METHOD="Magisk"
+    if [ -f "/data/adb/magisk/magisk" ]; then
+        MAGISK_VERSION=$(/data/adb/magisk/magisk -V 2>/dev/null || echo 'Unknown')
+        ROOT_DETAILS="Version: $MAGISK_VERSION"
+    fi
+    append_safe "**Method:** $ROOT_METHOD" "$OUT" "Root Mgmt Info"
+    append_safe "**Details:** $ROOT_DETAILS" "$OUT" "Root Mgmt Info"
+    if [ -d "/data/adb/modules" ]; then
+        MODULE_COUNT=$(ls -1 /data/adb/modules 2>/dev/null | wc -l)
+        append_safe "**Modules:** $MODULE_COUNT modules installed" "$OUT" "Root Mgmt Info"
+    fi
+# Check for KernelSU
+elif [ -f "/sys/fs/ksu/version" ] || echo "$SU_VERSION_OUTPUT" | grep -q "KernelSU"; then
+    ROOT_METHOD="KernelSU"
+    if [ -f "/sys/fs/ksu/version" ]; then
+        KSU_VERSION=$(cat /sys/fs/ksu/version 2>/dev/null || echo 'Unknown')
+        ROOT_DETAILS="Version: $KSU_VERSION"
+    else
+        ROOT_DETAILS="Version: $SU_VERSION_OUTPUT"
+    fi
+    append_safe "**Method:** $ROOT_METHOD" "$OUT" "Root Mgmt Info"
+    append_safe "**Details:** $ROOT_DETAILS" "$OUT" "Root Mgmt Info"
+# Check for SuperSU
+elif [ -f "/system/bin/daemonsu" ] || [ -f "/system/xbin/daemonsu" ] || echo "$SU_VERSION_OUTPUT" | grep -q "SUPERSU"; then
+    ROOT_METHOD="SuperSU"
+    ROOT_DETAILS="Legacy SuperSU installation detected"
+    append_safe "**Method:** $ROOT_METHOD" "$OUT" "Root Mgmt Info"
+    append_safe "**Details:** $ROOT_DETAILS" "$OUT" "Root Mgmt Info"
+# Check for other su implementations
+elif [ "$SU_BINARY" != "Not found" ]; then
+    ROOT_METHOD="Custom/Other"
+    ROOT_DETAILS="su binary: $SU_BINARY"
+    if [ -n "$SU_VERSION_OUTPUT" ]; then
+        ROOT_DETAILS="$ROOT_DETAILS, Version: $SU_VERSION_OUTPUT"
+    fi
+    append_safe "**Method:** $ROOT_METHOD" "$OUT" "Root Mgmt Info"
+    append_safe "**Details:** $ROOT_DETAILS" "$OUT" "Root Mgmt Info"
+else
+    append_safe "**Method:** No root management detected" "$OUT" "Root Mgmt Info"
+    append_safe "**Note:** Script may still work with built-in root access" "$OUT" "Root Mgmt Info"
+fi
+
+# Check for additional root indicators
+if [ -f "/system/app/Superuser.apk" ] || [ -f "/system/app/SuperSU.apk" ]; then
+    append_safe "**Legacy apps:** Superuser/SuperSU APK detected" "$OUT" "Root Mgmt Info"
+fi
+
+if [ -f "/system/etc/init.d/99SuperSUDaemon" ]; then
+    append_safe "**Init scripts:** SuperSU daemon script detected" "$OUT" "Root Mgmt Info"
+fi
+
+log_success "Root management detection completed"
 
 # ---------- BOOT / VB META / VERIFIED STATE ----------
-echo "## 🔒 Verified Boot State" >> "$OUT"
-echo "" >> "$OUT"
-echo "**Boot State:** $(getprop ro.boot.verifiedbootstate)" >> "$OUT"
-echo "" >> "$OUT"
-echo "### VBMeta Information" >> "$OUT"
-echo "" >> "$OUT"
-echo "\`\`\`" >> "$OUT"
-echo "Algorithm:" >> "$OUT"
-cat /sys/firmware/devicetree/base/vbmeta/0/algorithm 2>/dev/null >> "$OUT"
-echo "Digest:" >> "$OUT"
-cat /sys/firmware/devicetree/base/vbmeta/0/digest 2>/dev/null >> "$OUT"
-echo "\`\`\`" >> "$OUT"
-echo "" >> "$OUT"
+log_info "Collecting verified boot state..."
+
+append_safe "## 🔒 Verified Boot State" "$OUT" "VB Info"
+append_safe "" "$OUT" "VB Info"
+
+# Get boot state
+BOOT_STATE=$(getprop ro.boot.verifiedbootstate 2>/dev/null || echo 'N/A')
+append_safe "**Boot State:** $BOOT_STATE" "$OUT" "VB Info"
+
+# Additional boot-related properties
+BOOT_MODE=$(getprop ro.bootmode 2>/dev/null || echo 'N/A')
+append_safe "**Boot Mode:** $BOOT_MODE" "$OUT" "VB Info"
+
+VBMETA_STATE=$(getprop ro.boot.vbmeta.device_state 2>/dev/null || echo 'N/A')
+append_safe "**VBMeta Device State:** $VBMETA_STATE" "$OUT" "VB Info"
+
+append_safe "" "$OUT" "VB Info"
+append_safe "### VBMeta Information" "$OUT" "VB Info"
+append_safe "" "$OUT" "VB Info"
+append_safe "\`\`\`" "$OUT" "VB Info"
+
+# Try multiple VBMeta paths and methods
+VBMETA_FOUND=false
+
+if [ -f "/sys/firmware/devicetree/base/vbmeta/0/algorithm" ]; then
+    append_safe "Algorithm (path 0):" "$OUT" "VB Info"
+    if cat /sys/firmware/devicetree/base/vbmeta/0/algorithm >> "$OUT" 2>/dev/null; then
+        VBMETA_FOUND=true
+    else
+        append_safe "Unable to read algorithm" "$OUT" "VB Info"
+    fi
+fi
+
+if [ -f "/sys/firmware/devicetree/base/vbmeta/0/digest" ]; then
+    append_safe "Digest (path 0):" "$OUT" "VB Info"
+    if cat /sys/firmware/devicetree/base/vbmeta/0/digest >> "$OUT" 2>/dev/null; then
+        VBMETA_FOUND=true
+    else
+        append_safe "Unable to read digest" "$OUT" "VB Info"
+    fi
+fi
+
+# Try alternative paths
+for i in 1 2 3; do
+    if [ -f "/sys/firmware/devicetree/base/vbmeta/$i/algorithm" ]; then
+        append_safe "Algorithm (path $i):" "$OUT" "VB Info"
+        cat /sys/firmware/devicetree/base/vbmeta/$i/algorithm >> "$OUT" 2>/dev/null
+        VBMETA_FOUND=true
+    fi
+done
+
+if [ "$VBMETA_FOUND" = false ]; then
+    append_safe "VBMeta information not accessible via devicetree" "$OUT" "VB Info"
+    append_safe "This is normal on some devices/ROMs" "$OUT" "VB Info"
+fi
+
+append_safe "\`\`\`" "$OUT" "VB Info"
+append_safe "" "$OUT" "VB Info"
+
+log_success "Verified boot information collected"
 
 # ---------- HARDWARE INFORMATION ----------
-echo "## 💻 CPU Information" >> "$OUT"
-echo "" >> "$OUT"
-echo "<details>" >> "$OUT"
-echo "<summary>Click to expand CPU details</summary>" >> "$OUT"
-echo "" >> "$OUT"
-echo "\`\`\`" >> "$OUT"
-cat /proc/cpuinfo >> "$OUT"
-echo "\`\`\`" >> "$OUT"
-echo "" >> "$OUT"
-echo "</details>" >> "$OUT"
-echo "" >> "$OUT"
+log_info "Collecting hardware information..."
 
-echo "## 🧠 Memory Information" >> "$OUT"
-echo "" >> "$OUT"
-echo "<details>" >> "$OUT"
-echo "<summary>Click to expand memory details</summary>" >> "$OUT"
-echo "" >> "$OUT"
-echo "\`\`\`" >> "$OUT"
-cat /proc/meminfo >> "$OUT"
-echo "\`\`\`" >> "$OUT"
-echo "" >> "$OUT"
-echo "</details>" >> "$OUT"
-echo "" >> "$OUT"
+append_safe "## 💻 CPU Information" "$OUT" "CPU Info"
+append_safe "" "$OUT" "CPU Info"
+append_safe "<details>" "$OUT" "CPU Info"
+append_safe "<summary>Click to expand CPU details</summary>" "$OUT" "CPU Info"
+append_safe "" "$OUT" "CPU Info"
+append_safe "\`\`\`" "$OUT" "CPU Info"
+if ! cat /proc/cpuinfo >> "$OUT" 2>/dev/null; then
+    append_safe "CPU information unavailable" "$OUT" "CPU Info"
+    log_warning "Failed to read /proc/cpuinfo"
+fi
+append_safe "\`\`\`" "$OUT" "CPU Info"
+append_safe "" "$OUT" "CPU Info"
+append_safe "</details>" "$OUT" "CPU Info"
+append_safe "" "$OUT" "CPU Info"
+
+append_safe "## 🧠 Memory Information" "$OUT" "Memory Info"
+append_safe "" "$OUT" "Memory Info"
+append_safe "<details>" "$OUT" "Memory Info"
+append_safe "<summary>Click to expand memory details</summary>" "$OUT" "Memory Info"
+append_safe "" "$OUT" "Memory Info"
+append_safe "\`\`\`" "$OUT" "Memory Info"
+if ! cat /proc/meminfo >> "$OUT" 2>/dev/null; then
+    append_safe "Memory information unavailable" "$OUT" "Memory Info"
+    log_warning "Failed to read /proc/meminfo"
+fi
+append_safe "\`\`\`" "$OUT" "Memory Info"
+append_safe "" "$OUT" "Memory Info"
+append_safe "</details>" "$OUT" "Memory Info"
+append_safe "" "$OUT" "Memory Info"
+
+log_success "Hardware information collected"
 
 # ---------- STORAGE + PARTITIONS ----------
-echo "## 💾 Storage Information" >> "$OUT"
-echo "" >> "$OUT"
-echo "### Disk Usage" >> "$OUT"
-echo "\`\`\`" >> "$OUT"
-df -h >> "$OUT"
-echo "\`\`\`" >> "$OUT"
-echo "" >> "$OUT"
+log_info "Collecting storage and partition information..."
 
-echo "### Partition Table" >> "$OUT"
-echo "\`\`\`" >> "$OUT"
-lsblk 2>/dev/null >> "$OUT"
-echo "\`\`\`" >> "$OUT"
-echo "" >> "$OUT"
+append_safe "## 💾 Storage Information" "$OUT" "Storage Info"
+append_safe "" "$OUT" "Storage Info"
+append_safe "### Disk Usage" "$OUT" "Storage Info"
+append_safe "\`\`\`" "$OUT" "Storage Info"
+if ! df -h >> "$OUT" 2>/dev/null; then
+    append_safe "Disk usage information unavailable" "$OUT" "Storage Info"
+    log_warning "Failed to get disk usage information"
+fi
+append_safe "\`\`\`" "$OUT" "Storage Info"
+append_safe "" "$OUT" "Storage Info"
 
-echo "<details>" >> "$OUT"
-echo "<summary>Mount Points (/proc/mounts)</summary>" >> "$OUT"
-echo "" >> "$OUT"
-echo "\`\`\`" >> "$OUT"
-cat /proc/mounts >> "$OUT"
-echo "\`\`\`" >> "$OUT"
-echo "" >> "$OUT"
-echo "</details>" >> "$OUT"
-echo "" >> "$OUT"
+append_safe "### Partition Table" "$OUT" "Storage Info"
+append_safe "\`\`\`" "$OUT" "Storage Info"
 
-echo "<details>" >> "$OUT"
-echo "<summary>FSTAB Files</summary>" >> "$OUT"
-echo "" >> "$OUT"
-echo "\`\`\`" >> "$OUT"
-cat /vendor/etc/fstab* 2>/dev/null >> "$OUT"
-cat /system/etc/fstab* 2>/dev/null >> "$OUT"
-echo "\`\`\`" >> "$OUT"
-echo "" >> "$OUT"
-echo "</details>" >> "$OUT"
-echo "" >> "$OUT"
+# Try multiple methods for partition information
+PART_INFO_FOUND=false
+
+# Try lsblk first
+if command -v lsblk >/dev/null 2>&1; then
+    if lsblk >> "$OUT" 2>/dev/null && [ $? -eq 0 ]; then
+        PART_INFO_FOUND=true
+        log_success "Partition table collected via lsblk"
+    fi
+fi
+
+# Fallback to /proc/partitions if lsblk failed
+if [ "$PART_INFO_FOUND" = false ] && [ -f "/proc/partitions" ]; then
+    append_safe "=== /proc/partitions ===" "$OUT" "Storage Info"
+    if cat /proc/partitions >> "$OUT" 2>/dev/null; then
+        PART_INFO_FOUND=true
+        log_success "Partition info collected from /proc/partitions"
+    fi
+fi
+
+# Try fdisk as another fallback
+if [ "$PART_INFO_FOUND" = false ] && command -v fdisk >/dev/null 2>&1; then
+    append_safe "=== Available block devices ===" "$OUT" "Storage Info"
+    if fdisk -l >> "$OUT" 2>/dev/null; then
+        PART_INFO_FOUND=true
+        log_success "Partition info collected via fdisk"
+    fi
+fi
+
+if [ "$PART_INFO_FOUND" = false ]; then
+    append_safe "Partition information unavailable" "$OUT" "Storage Info"
+    append_safe "This may be due to permissions or missing tools" "$OUT" "Storage Info"
+    log_warning "Failed to collect partition information via all methods"
+fi
+
+append_safe "\`\`\`" "$OUT" "Storage Info"
+append_safe "" "$OUT" "Storage Info"
+
+append_safe "<details>" "$OUT" "Storage Info"
+append_safe "<summary>Mount Points (/proc/mounts)</summary>" "$OUT" "Storage Info"
+append_safe "" "$OUT" "Storage Info"
+append_safe "\`\`\`" "$OUT" "Storage Info"
+if ! cat /proc/mounts >> "$OUT" 2>/dev/null; then
+    append_safe "Mount information unavailable" "$OUT" "Storage Info"
+    log_warning "Failed to read /proc/mounts"
+fi
+append_safe "\`\`\`" "$OUT" "Storage Info"
+append_safe "" "$OUT" "Storage Info"
+append_safe "</details>" "$OUT" "Storage Info"
+append_safe "" "$OUT" "Storage Info"
+
+append_safe "<details>" "$OUT" "Storage Info"
+append_safe "<summary>FSTAB Files</summary>" "$OUT" "Storage Info"
+append_safe "" "$OUT" "Storage Info"
+append_safe "\`\`\`" "$OUT" "Storage Info"
+
+FSTAB_FOUND=false
+
+# Check multiple FSTAB locations
+for fstab_path in "/vendor/etc/fstab*" "/system/etc/fstab*" "/etc/fstab*"; do
+    if ls $fstab_path >/dev/null 2>&1; then
+        append_safe "=== $fstab_path ===" "$OUT" "Storage Info"
+        if cat $fstab_path >> "$OUT" 2>/dev/null; then
+            FSTAB_FOUND=true
+        fi
+    fi
+done
+
+if [ "$FSTAB_FOUND" = false ]; then
+    append_safe "No accessible FSTAB files found" "$OUT" "Storage Info"
+    log_warning "No FSTAB files could be read"
+else
+    log_success "FSTAB information collected"
+fi
+
+append_safe "\`\`\`" "$OUT" "Storage Info"
+append_safe "" "$OUT" "Storage Info"
+append_safe "</details>" "$OUT" "Storage Info"
+append_safe "" "$OUT" "Storage Info"
 
 # ---------- HARDWARE SERVICES ----------
-echo "## 📺 Display & Graphics" >> "$OUT"
-echo "" >> "$OUT"
-echo "<details>" >> "$OUT"
-echo "<summary>Display Service</summary>" >> "$OUT"
-echo "" >> "$OUT"
-echo "\`\`\`" >> "$OUT"
-dumpsys display >> "$OUT"
-echo "\`\`\`" >> "$OUT"
-echo "" >> "$OUT"
-echo "</details>" >> "$OUT"
-echo "" >> "$OUT"
+log_info "Collecting hardware service information..."
 
-echo "<details>" >> "$OUT"
-echo "<summary>SurfaceFlinger (First 120 lines)</summary>" >> "$OUT"
-echo "" >> "$OUT"
-echo "\`\`\`" >> "$OUT"
-dumpsys SurfaceFlinger | head -n 120 >> "$OUT"
-echo "\`\`\`" >> "$OUT"
-echo "" >> "$OUT"
-echo "</details>" >> "$OUT"
-echo "" >> "$OUT"
+append_safe "## 📺 Display & Graphics" "$OUT" "Display Info"
+append_safe "" "$OUT" "Display Info"
+append_safe "<details>" "$OUT" "Display Info"
+append_safe "<summary>Display Service</summary>" "$OUT" "Display Info"
+append_safe "" "$OUT" "Display Info"
+append_safe "\`\`\`" "$OUT" "Display Info"
+if command -v dumpsys >/dev/null 2>&1; then
+    if ! dumpsys display >> "$OUT" 2>/dev/null; then
+        append_safe "Display service information unavailable" "$OUT" "Display Info"
+        log_warning "Failed to get display service info"
+    fi
+else
+    append_safe "dumpsys command not available" "$OUT" "Display Info"
+fi
+append_safe "\`\`\`" "$OUT" "Display Info"
+append_safe "" "$OUT" "Display Info"
+append_safe "</details>" "$OUT" "Display Info"
+append_safe "" "$OUT" "Display Info"
+
+append_safe "<details>" "$OUT" "Display Info"
+append_safe "<summary>SurfaceFlinger (First 120 lines)</summary>" "$OUT" "Display Info"
+append_safe "" "$OUT" "Display Info"
+append_safe "\`\`\`" "$OUT" "Display Info"
+if command -v dumpsys >/dev/null 2>&1; then
+    if ! dumpsys SurfaceFlinger | head -n 120 >> "$OUT" 2>/dev/null; then
+        append_safe "SurfaceFlinger information unavailable" "$OUT" "Display Info"
+        log_warning "Failed to get SurfaceFlinger info"
+    fi
+else
+    append_safe "dumpsys command not available" "$OUT" "Display Info"
+fi
+append_safe "\`\`\`" "$OUT" "Display Info"
+append_safe "" "$OUT" "Display Info"
+append_safe "</details>" "$OUT" "Display Info"
+append_safe "" "$OUT" "Display Info"
 
 # ---------- POWER MANAGEMENT ----------
-echo "## 🔋 Power & Battery" >> "$OUT"
-echo "" >> "$OUT"
-echo "### Battery Status" >> "$OUT"
-echo "\`\`\`" >> "$OUT"
-dumpsys battery >> "$OUT"
-echo "\`\`\`" >> "$OUT"
-echo "" >> "$OUT"
+log_info "Collecting power management information..."
 
-echo "<details>" >> "$OUT"
-echo "<summary>Power Management</summary>" >> "$OUT"
-echo "" >> "$OUT"
-echo "\`\`\`" >> "$OUT"
-dumpsys power >> "$OUT"
-echo "\`\`\`" >> "$OUT"
-echo "" >> "$OUT"
-echo "</details>" >> "$OUT"
-echo "" >> "$OUT"
+append_safe "## 🔋 Power & Battery" "$OUT" "Power Info"
+append_safe "" "$OUT" "Power Info"
+append_safe "### Battery Status" "$OUT" "Power Info"
+append_safe "\`\`\`" "$OUT" "Power Info"
+if command -v dumpsys >/dev/null 2>&1; then
+    if ! dumpsys battery >> "$OUT" 2>/dev/null; then
+        append_safe "Battery information unavailable" "$OUT" "Power Info"
+        log_warning "Failed to get battery info"
+    fi
+else
+    append_safe "dumpsys command not available" "$OUT" "Power Info"
+fi
+append_safe "\`\`\`" "$OUT" "Power Info"
+append_safe "" "$OUT" "Power Info"
+
+append_safe "<details>" "$OUT" "Power Info"
+append_safe "<summary>Power Management</summary>" "$OUT" "Power Info"
+append_safe "" "$OUT" "Power Info"
+append_safe "\`\`\`" "$OUT" "Power Info"
+if command -v dumpsys >/dev/null 2>&1; then
+    if ! dumpsys power >> "$OUT" 2>/dev/null; then
+        append_safe "Power management information unavailable" "$OUT" "Power Info"
+        log_warning "Failed to get power management info"
+    fi
+else
+    append_safe "dumpsys command not available" "$OUT" "Power Info"
+fi
+append_safe "\`\`\`" "$OUT" "Power Info"
+append_safe "" "$OUT" "Power Info"
+append_safe "</details>" "$OUT" "Power Info"
+append_safe "" "$OUT" "Power Info"
 
 # ---------- CONNECTIVITY ----------
-echo "## 📡 Connectivity" >> "$OUT"
-echo "" >> "$OUT"
-echo "<details>" >> "$OUT"
-echo "<summary>WiFi Service</summary>" >> "$OUT"
-echo "" >> "$OUT"
-echo "\`\`\`" >> "$OUT"
-dumpsys wifi >> "$OUT"
-echo "\`\`\`" >> "$OUT"
-echo "" >> "$OUT"
-echo "</details>" >> "$OUT"
-echo "" >> "$OUT"
+log_info "Collecting connectivity information..."
 
-echo "<details>" >> "$OUT"
-echo "<summary>Telephony Registry</summary>" >> "$OUT"
-echo "" >> "$OUT"
-echo "\`\`\`" >> "$OUT"
-dumpsys telephony.registry >> "$OUT"
-echo "\`\`\`" >> "$OUT"
-echo "" >> "$OUT"
-echo "</details>" >> "$OUT"
-echo "" >> "$OUT"
+append_safe "## 📡 Connectivity" "$OUT" "Connectivity Info"
+append_safe "" "$OUT" "Connectivity Info"
+append_safe "<details>" "$OUT" "Connectivity Info"
+append_safe "<summary>WiFi Service</summary>" "$OUT" "Connectivity Info"
+append_safe "" "$OUT" "Connectivity Info"
+append_safe "\`\`\`" "$OUT" "Connectivity Info"
+if command -v dumpsys >/dev/null 2>&1; then
+    if ! dumpsys wifi >> "$OUT" 2>/dev/null; then
+        append_safe "WiFi service information unavailable" "$OUT" "Connectivity Info"
+        log_warning "Failed to get WiFi service info"
+    fi
+else
+    append_safe "dumpsys command not available" "$OUT" "Connectivity Info"
+fi
+append_safe "\`\`\`" "$OUT" "Connectivity Info"
+append_safe "" "$OUT" "Connectivity Info"
+append_safe "</details>" "$OUT" "Connectivity Info"
+append_safe "" "$OUT" "Connectivity Info"
 
-echo "<details>" >> "$OUT"
-echo "<summary>Radio/Phone Service</summary>" >> "$OUT"
-echo "" >> "$OUT"
-echo "\`\`\`" >> "$OUT"
-dumpsys phone >> "$OUT"
-echo "\`\`\`" >> "$OUT"
-echo "" >> "$OUT"
-echo "</details>" >> "$OUT"
-echo "" >> "$OUT"
+append_safe "<details>" "$OUT" "Connectivity Info"
+append_safe "<summary>Telephony Registry</summary>" "$OUT" "Connectivity Info"
+append_safe "" "$OUT" "Connectivity Info"
+append_safe "\`\`\`" "$OUT" "Connectivity Info"
+if command -v dumpsys >/dev/null 2>&1; then
+    if ! dumpsys telephony.registry >> "$OUT" 2>/dev/null; then
+        append_safe "Telephony registry information unavailable" "$OUT" "Connectivity Info"
+        log_warning "Failed to get telephony registry info"
+    fi
+else
+    append_safe "dumpsys command not available" "$OUT" "Connectivity Info"
+fi
+append_safe "\`\`\`" "$OUT" "Connectivity Info"
+append_safe "" "$OUT" "Connectivity Info"
+append_safe "</details>" "$OUT" "Connectivity Info"
+append_safe "" "$OUT" "Connectivity Info"
+
+append_safe "<details>" "$OUT" "Connectivity Info"
+append_safe "<summary>Radio/Phone Service</summary>" "$OUT" "Connectivity Info"
+append_safe "" "$OUT" "Connectivity Info"
+append_safe "\`\`\`" "$OUT" "Connectivity Info"
+if command -v dumpsys >/dev/null 2>&1; then
+    if ! dumpsys phone >> "$OUT" 2>/dev/null; then
+        append_safe "Phone service information unavailable" "$OUT" "Connectivity Info"
+        log_warning "Failed to get phone service info"
+    fi
+else
+    append_safe "dumpsys command not available" "$OUT" "Connectivity Info"
+fi
+append_safe "\`\`\`" "$OUT" "Connectivity Info"
+append_safe "" "$OUT" "Connectivity Info"
+append_safe "</details>" "$OUT" "Connectivity Info"
+append_safe "" "$OUT" "Connectivity Info"
 
 # ---------- SENSORS ----------
-echo "## 📊 Sensors" >> "$OUT"
-echo "" >> "$OUT"
-echo "<details>" >> "$OUT"
-echo "<summary>Sensor Service</summary>" >> "$OUT"
-echo "" >> "$OUT"
-echo "\`\`\`" >> "$OUT"
-dumpsys sensorservice >> "$OUT"
-echo "\`\`\`" >> "$OUT"
-echo "" >> "$OUT"
-echo "</details>" >> "$OUT"
-echo "" >> "$OUT"
+log_info "Collecting sensor information..."
+
+append_safe "## 📊 Sensors" "$OUT" "Sensor Info"
+append_safe "" "$OUT" "Sensor Info"
+append_safe "<details>" "$OUT" "Sensor Info"
+append_safe "<summary>Sensor Service</summary>" "$OUT" "Sensor Info"
+append_safe "" "$OUT" "Sensor Info"
+append_safe "\`\`\`" "$OUT" "Sensor Info"
+if command -v dumpsys >/dev/null 2>&1; then
+    if ! dumpsys sensorservice >> "$OUT" 2>/dev/null; then
+        append_safe "Sensor service information unavailable" "$OUT" "Sensor Info"
+        log_warning "Failed to get sensor service info"
+    fi
+else
+    append_safe "dumpsys command not available" "$OUT" "Sensor Info"
+fi
+append_safe "\`\`\`" "$OUT" "Sensor Info"
+append_safe "" "$OUT" "Sensor Info"
+append_safe "</details>" "$OUT" "Sensor Info"
+append_safe "" "$OUT" "Sensor Info"
 
 # ---------- SOFTWARE ----------
-echo "## 📦 Software" >> "$OUT"
-echo "" >> "$OUT"
-echo "<details>" >> "$OUT"
-echo "<summary>Installed Packages</summary>" >> "$OUT"
-echo "" >> "$OUT"
-echo "\`\`\`" >> "$OUT"
-pm list packages >> "$OUT"
-echo "\`\`\`" >> "$OUT"
-echo "" >> "$OUT"
-echo "</details>" >> "$OUT"
-echo "" >> "$OUT"
+log_info "Collecting software information..."
 
-echo "<details>" >> "$OUT"
-echo "<summary>Activity Manager (Top 150 lines)</summary>" >> "$OUT"
-echo "" >> "$OUT"
-echo "\`\`\`" >> "$OUT"
-dumpsys activity activities | head -n 150 >> "$OUT"
-echo "\`\`\`" >> "$OUT"
-echo "" >> "$OUT"
-echo "</details>" >> "$OUT"
-echo "" >> "$OUT"
+append_safe "## 📦 Software" "$OUT" "Software Info"
+append_safe "" "$OUT" "Software Info"
+append_safe "<details>" "$OUT" "Software Info"
+append_safe "<summary>Installed Packages</summary>" "$OUT" "Software Info"
+append_safe "" "$OUT" "Software Info"
+append_safe "\`\`\`" "$OUT" "Software Info"
+if command -v pm >/dev/null 2>&1; then
+    if ! pm list packages >> "$OUT" 2>/dev/null; then
+        append_safe "Package list unavailable" "$OUT" "Software Info"
+        log_warning "Failed to get package list"
+    fi
+else
+    append_safe "pm command not available" "$OUT" "Software Info"
+fi
+append_safe "\`\`\`" "$OUT" "Software Info"
+append_safe "" "$OUT" "Software Info"
+append_safe "</details>" "$OUT" "Software Info"
+append_safe "" "$OUT" "Software Info"
+
+append_safe "<details>" "$OUT" "Software Info"
+append_safe "<summary>Activity Manager (Top 150 lines)</summary>" "$OUT" "Software Info"
+append_safe "" "$OUT" "Software Info"
+append_safe "\`\`\`" "$OUT" "Software Info"
+if command -v dumpsys >/dev/null 2>&1; then
+    if ! dumpsys activity activities | head -n 150 >> "$OUT" 2>/dev/null; then
+        append_safe "Activity manager information unavailable" "$OUT" "Software Info"
+        log_warning "Failed to get activity manager info"
+    fi
+else
+    append_safe "dumpsys command not available" "$OUT" "Software Info"
+fi
+append_safe "\`\`\`" "$OUT" "Software Info"
+append_safe "" "$OUT" "Software Info"
+append_safe "</details>" "$OUT" "Software Info"
+append_safe "" "$OUT" "Software Info"
+
+log_success "All information collection completed"
 
 # ---------- FINAL OUTPUT ----------
 append_safe "---" "$OUT" "Footer"
