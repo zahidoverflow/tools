@@ -1,6 +1,6 @@
 #!/system/bin/sh
 # ============================================================
-#  Speccy (v3)
+#  Speccy (v4)
 #  Author: zahidoverflow
 #
 #  ONE-LINER INSTALLATION:
@@ -8,14 +8,19 @@
 #
 #  UPDATE LOG:
 #  -----------
+#  v4.0 (Nov 2025):
+#    • Refactored to organized multi-file output structure
+#    • Removed emojis for professional appearance
+#    • Creates dedicated Speccy folder with categorized files
+#    • Enhanced terminal output with clean progress indicators
+#    • Improved file organization and readability
+#  
 #  v3.0 (Nov 2025):
 #    • Added dependency checks for Termux compatibility
-#    • Implemented date-formatted output filenames (speccy-DD-MM-YY.md)
-#    • Smart path detection (Downloads dir on Android, current dir elsewhere)
-#    • Enhanced Markdown export with collapsible sections
-#    • Added terminal display after export
-#    • Improved error handling and user feedback
-#  
+#    • Implemented date-formatted output filenames
+#    • Smart path detection and enhanced error handling
+#    • Universal root detection for any rooted Android device
+#
 #  v2.0 (Previous):
 #    • Original Android device specification export
 #    • Basic text format output
@@ -72,19 +77,19 @@
 # 4 = Command execution failure
 
 log_info() {
-    echo "ℹ️  $1"
+    echo "[INFO] $1"
 }
 
 log_success() {
-    echo "✅ $1"
+    echo "[SUCCESS] $1"
 }
 
 log_warning() {
-    echo "⚠️  $1"
+    echo "[WARNING] $1"
 }
 
 log_error() {
-    echo "❌ $1" >&2
+    echo "[ERROR] $1" >&2
     # Log errors to file
     if [ -n "$LOG_OUT" ]; then
         echo "$(date 2>/dev/null || echo 'Date unavailable') [ERROR] $1" >> "$LOG_OUT" 2>/dev/null
@@ -92,7 +97,7 @@ log_error() {
 }
 
 log_critical() {
-    echo "🚨 CRITICAL: $1" >&2
+    echo "[CRITICAL] $1" >&2
     # Log critical errors to file
     if [ -n "$LOG_OUT" ]; then
         echo "$(date 2>/dev/null || echo 'Date unavailable') [CRITICAL] $1" >> "$LOG_OUT" 2>/dev/null
@@ -128,19 +133,17 @@ handle_error() {
 }
 
 check_permissions() {
-    # Check if we can write to target directory
-    local target_dir=$(dirname "$OUT")
-    
-    if [ ! -d "$target_dir" ]; then
-        log_warning "Target directory doesn't exist: $target_dir"
-        if ! mkdir -p "$target_dir" 2>/dev/null; then
-            handle_error 3 "Cannot create target directory: $target_dir" "Try running with sudo or choose a different location"
+    # Check if we can create and write to target directory
+    if [ ! -d "$BASE_OUT" ]; then
+        log_info "Creating output directory: $BASE_OUT"
+        if ! mkdir -p "$BASE_OUT" 2>/dev/null; then
+            handle_error 3 "Cannot create target directory: $BASE_OUT" "Try running with sudo or choose a different location"
         fi
-        log_success "Created target directory: $target_dir"
+        log_success "Created directory structure"
     fi
     
-    if [ ! -w "$target_dir" ]; then
-        handle_error 2 "No write permission to: $target_dir" "Try running with sudo or choose a writable location"
+    if [ ! -w "$BASE_OUT" ]; then
+        handle_error 2 "No write permission to: $BASE_OUT" "Try running with sudo or choose a writable location"
     fi
 }
 
@@ -299,424 +302,372 @@ if [ -n "$MISSING_OPTIONAL" ]; then
 fi
 
 # ---------- OUTPUT PATH DETECTION ----------
-# Generate timestamp-formatted filename (YYYYMMDDHHMM)
+# Generate timestamp-formatted folder name (YYYYMMDDHHMM)
 if ! DATE_STR=$(date '+%Y%m%d%H%M' 2>/dev/null); then
     log_warning "Standard date command failed, using fallback"
-    # Fallback for different date implementations
     if ! DATE_STR=$(date '+%Y%m%d%H%M' 2>/dev/null); then
         log_warning "Date formatting failed, using epoch timestamp"
         DATE_STR="$(date +%s 2>/dev/null || echo 'nodate')"
     fi
 fi
 
-FILENAME="speccy-${DATE_STR}.md"
-LOG_FILE="speccy-${DATE_STR}.log"
+FOLDER_NAME="Speccy-${DATE_STR}"
+LOG_FILE="export.log"
 
-# Determine output path
+# Determine base output path
 if [ "$ANDROID_ENV" = true ] && [ -d "/sdcard/Download" ]; then
-    OUT="/sdcard/Download/$FILENAME"
-    LOG_OUT="/sdcard/Download/$LOG_FILE"
-    log_info "Output: Android Downloads directory"
+    BASE_OUT="/sdcard/Download/$FOLDER_NAME"
+    log_info "Output location: Android Downloads directory"
 elif [ -d "$HOME/Downloads" ]; then
-    OUT="$HOME/Downloads/$FILENAME"
-    LOG_OUT="$HOME/Downloads/$LOG_FILE"
-    log_info "Output: User Downloads directory"
+    BASE_OUT="$HOME/Downloads/$FOLDER_NAME"
+    log_info "Output location: User Downloads directory"
 else
-    OUT="./$FILENAME"
-    LOG_OUT="./$LOG_FILE"
-    log_info "Output: Current directory"
+    BASE_OUT="./$FOLDER_NAME"
+    log_info "Output location: Current directory"
 fi
 
-log_info "File: $OUT"
+# Create organized file structure
+DEVICE_FILE="$BASE_OUT/01-device-info.md"
+KERNEL_FILE="$BASE_OUT/02-kernel-root.md"
+BOOT_FILE="$BASE_OUT/03-boot-security.md"
+HARDWARE_FILE="$BASE_OUT/04-hardware.md"
+STORAGE_FILE="$BASE_OUT/05-storage.md"
+SERVICES_FILE="$BASE_OUT/06-services.md"
+SOFTWARE_FILE="$BASE_OUT/07-software.md"
+SUMMARY_FILE="$BASE_OUT/00-summary.md"
+LOG_OUT="$BASE_OUT/$LOG_FILE"
+
+log_info "Creating directory structure: $BASE_OUT"
 
 # Check permissions and create directory if needed
 check_permissions
 
 echo ""
 
-# ---------- INITIALIZE OUTPUT FILE ----------
-log_info "Initializing output file..."
+# ---------- INITIALIZE OUTPUT FILES ----------
+log_info "Initializing output files..."
 
-if ! append_safe "# Android Device Specification Report" "$OUT" "Header"; then
-    handle_error 3 "Cannot write to output file: $OUT" "Check write permissions and disk space"
+# Create summary file
+if ! append_safe "# Android Device Analysis Summary" "$SUMMARY_FILE" "Summary"; then
+    handle_error 3 "Cannot write to summary file: $SUMMARY_FILE" "Check write permissions and disk space"
 fi
+append_safe "" "$SUMMARY_FILE" "Summary"
+append_safe "**Generated:** $(date 2>/dev/null || echo 'Date unavailable')" "$SUMMARY_FILE" "Summary"
+append_safe "**Export Tool:** Speccy v4.0" "$SUMMARY_FILE" "Summary"
+append_safe "**Analysis ID:** ${DATE_STR}" "$SUMMARY_FILE" "Summary"
+append_safe "" "$SUMMARY_FILE" "Summary"
+append_safe "## File Structure" "$SUMMARY_FILE" "Summary"
+append_safe "" "$SUMMARY_FILE" "Summary"
+append_safe "| File | Description |" "$SUMMARY_FILE" "Summary"
+append_safe "|------|-------------|" "$SUMMARY_FILE" "Summary"
+append_safe "| \`01-device-info.md\` | Device specifications and build information |" "$SUMMARY_FILE" "Summary"
+append_safe "| \`02-kernel-root.md\` | Kernel version and root management details |" "$SUMMARY_FILE" "Summary"
+append_safe "| \`03-boot-security.md\` | Boot state and security verification |" "$SUMMARY_FILE" "Summary"
+append_safe "| \`04-hardware.md\` | CPU, memory, and hardware configuration |" "$SUMMARY_FILE" "Summary"
+append_safe "| \`05-storage.md\` | Storage, partitions, and file systems |" "$SUMMARY_FILE" "Summary"
+append_safe "| \`06-services.md\` | System services and hardware interfaces |" "$SUMMARY_FILE" "Summary"
+append_safe "| \`07-software.md\` | Installed packages and system software |" "$SUMMARY_FILE" "Summary"
+append_safe "| \`export.log\` | Export process log and error details |" "$SUMMARY_FILE" "Summary"
+append_safe "" "$SUMMARY_FILE" "Summary"
 
-append_safe "" "$OUT" "Header"
-append_safe "**Generated:** $(date 2>/dev/null || echo 'Date unavailable')" "$OUT" "Header"
-append_safe "**Export Tool:** KRYPTON v3" "$OUT" "Header"
-append_safe "" "$OUT" "Header"
+log_success "Output structure initialized"
 
-log_success "Output file initialized"
-
-# ---------- BASIC DEVICE IDENTITIES ----------
+# ---------- DEVICE INFORMATION ----------
 log_info "Collecting device information..."
 
-append_safe "## 📱 Device Information" "$OUT" "Device Info"
-append_safe "" "$OUT" "Device Info"
-append_safe "| Property | Value |" "$OUT" "Device Info"
-append_safe "|----------|-------|" "$OUT" "Device Info"
+# Initialize device info file
+append_safe "# Device Information" "$DEVICE_FILE" "Device Info"
+append_safe "" "$DEVICE_FILE" "Device Info"
+append_safe "**Analysis Date:** $(date 2>/dev/null || echo 'Date unavailable')" "$DEVICE_FILE" "Device Info"
+append_safe "" "$DEVICE_FILE" "Device Info"
+append_safe "## Device Specifications" "$DEVICE_FILE" "Device Info"
+append_safe "" "$DEVICE_FILE" "Device Info"
+append_safe "| Property | Value |" "$DEVICE_FILE" "Device Info"
+append_safe "|----------|-------|" "$DEVICE_FILE" "Device Info"
 
 # Collect device properties with error handling
 if command -v getprop >/dev/null 2>&1; then
-    append_safe "| Model | $(getprop ro.product.model 2>/dev/null || echo 'N/A') |" "$OUT" "Device Info"
-    append_safe "| Device | $(getprop ro.product.device 2>/dev/null || echo 'N/A') |" "$OUT" "Device Info"
-    append_safe "| Brand | $(getprop ro.product.brand 2>/dev/null || echo 'N/A') |" "$OUT" "Device Info"
-    append_safe "| Manufacturer | $(getprop ro.product.manufacturer 2>/dev/null || echo 'N/A') |" "$OUT" "Device Info"
-    append_safe "| Fingerprint | $(getprop ro.build.fingerprint 2>/dev/null || echo 'N/A') |" "$OUT" "Device Info"
-    append_safe "| Build ID | $(getprop ro.build.id 2>/dev/null || echo 'N/A') |" "$OUT" "Device Info"
-    append_safe "| Android Version | $(getprop ro.build.version.release 2>/dev/null || echo 'N/A') |" "$OUT" "Device Info"
-    append_safe "| Security Patch | $(getprop ro.build.version.security_patch 2>/dev/null || echo 'N/A') |" "$OUT" "Device Info"
-    append_safe "| ROM Type | $(getprop ro.boot.verifiedbootstate 2>/dev/null || echo 'N/A') |" "$OUT" "Device Info"
-    log_success "Device information collected"
+    MODEL=$(getprop ro.product.model 2>/dev/null || echo 'N/A')
+    DEVICE=$(getprop ro.product.device 2>/dev/null || echo 'N/A')
+    BRAND=$(getprop ro.product.brand 2>/dev/null || echo 'N/A')
+    MANUFACTURER=$(getprop ro.product.manufacturer 2>/dev/null || echo 'N/A')
+    
+    append_safe "| Model | $MODEL |" "$DEVICE_FILE" "Device Info"
+    append_safe "| Device | $DEVICE |" "$DEVICE_FILE" "Device Info"
+    append_safe "| Brand | $BRAND |" "$DEVICE_FILE" "Device Info"
+    append_safe "| Manufacturer | $MANUFACTURER |" "$DEVICE_FILE" "Device Info"
+    append_safe "| Fingerprint | $(getprop ro.build.fingerprint 2>/dev/null || echo 'N/A') |" "$DEVICE_FILE" "Device Info"
+    append_safe "| Build ID | $(getprop ro.build.id 2>/dev/null || echo 'N/A') |" "$DEVICE_FILE" "Device Info"
+    append_safe "| Android Version | $(getprop ro.build.version.release 2>/dev/null || echo 'N/A') |" "$DEVICE_FILE" "Device Info"
+    append_safe "| Security Patch | $(getprop ro.build.version.security_patch 2>/dev/null || echo 'N/A') |" "$DEVICE_FILE" "Device Info"
+    append_safe "| ROM Type | $(getprop ro.boot.verifiedbootstate 2>/dev/null || echo 'N/A') |" "$DEVICE_FILE" "Device Info"
+    
+    # Update summary with key device info
+    append_safe "## Device Summary" "$SUMMARY_FILE" "Summary"
+    append_safe "" "$SUMMARY_FILE" "Summary"
+    append_safe "**Device:** $BRAND $MODEL ($DEVICE)" "$SUMMARY_FILE" "Summary"
+    append_safe "**Android:** $(getprop ro.build.version.release 2>/dev/null || echo 'N/A')" "$SUMMARY_FILE" "Summary"
+    append_safe "**Security Patch:** $(getprop ro.build.version.security_patch 2>/dev/null || echo 'N/A')" "$SUMMARY_FILE" "Summary"
+    append_safe "" "$SUMMARY_FILE" "Summary"
 else
-    append_safe "| Error | getprop command not available |" "$OUT" "Device Info"
-    log_warning "getprop not available - device info limited"
+    append_safe "| Error | getprop command not available |" "$DEVICE_FILE" "Device Info"
 fi
 
-append_safe "" "$OUT" "Device Info"
+append_safe "" "$DEVICE_FILE" "Device Info"
+log_success "Device information saved to 01-device-info.md"
 
-# ---------- KERNEL + ROOT STATE ----------
-log_info "Collecting kernel and root information..."
+# ---------- KERNEL AND ROOT ANALYSIS ----------
+log_info "Analyzing kernel and root status..."
 
-append_safe "## 🔧 Kernel Information" "$OUT" "Kernel Info"
-append_safe "" "$OUT" "Kernel Info"
-append_safe "\`\`\`" "$OUT" "Kernel Info"
-if ! uname -a >> "$OUT" 2>/dev/null; then
-    append_safe "Kernel information unavailable" "$OUT" "Kernel Info"
-    log_warning "Failed to get kernel information"
-fi
-append_safe "\`\`\`" "$OUT" "Kernel Info"
-append_safe "" "$OUT" "Kernel Info"
+# Initialize kernel/root file
+append_safe "# Kernel and Root Analysis" "$KERNEL_FILE" "Kernel Info"
+append_safe "" "$KERNEL_FILE" "Kernel Info"
+append_safe "## Kernel Information" "$KERNEL_FILE" "Kernel Info"
+append_safe "" "$KERNEL_FILE" "Kernel Info"
+append_safe "| Property | Value |" "$KERNEL_FILE" "Kernel Info"
+append_safe "|----------|-------|" "$KERNEL_FILE" "Kernel Info"
 
-append_safe "## 🔐 Root Environment" "$OUT" "Root Info"
-append_safe "" "$OUT" "Root Info"
-
-# Check for su binary
-SU_BINARY=$(which su 2>/dev/null || echo 'Not found')
-append_safe "**su binary:** $SU_BINARY" "$OUT" "Root Info"
-append_safe "" "$OUT" "Root Info"
-
-# Get su version if available
-if [ "$SU_BINARY" != "Not found" ]; then
-    append_safe "\`\`\`" "$OUT" "Root Info"
-    if ! su -v >> "$OUT" 2>/dev/null; then
-        append_safe "su version information unavailable" "$OUT" "Root Info"
-        SU_VERSION_OUTPUT=""
-    else
-        SU_VERSION_OUTPUT=$(su -v 2>/dev/null || echo '')
-    fi
-    append_safe "\`\`\`" "$OUT" "Root Info"
+if [ -r "/proc/version" ]; then
+    KERNEL_VERSION=$(cat /proc/version 2>/dev/null || echo 'N/A')
+    append_safe "| Kernel Version | $KERNEL_VERSION |" "$KERNEL_FILE" "Kernel Info"
 else
-    append_safe "**Status:** No root access detected" "$OUT" "Root Info"
-    SU_VERSION_OUTPUT=""
+    append_safe "| Kernel Version | /proc/version not readable |" "$KERNEL_FILE" "Kernel Info"
 fi
-append_safe "" "$OUT" "Root Info"
 
-# Enhanced root management detection
-append_safe "## ⚙️ Root Management" "$OUT" "Root Mgmt Info"
-append_safe "" "$OUT" "Root Mgmt Info"
+if command -v uname >/dev/null 2>&1; then
+    append_safe "| Architecture | $(uname -m 2>/dev/null || echo 'N/A') |" "$KERNEL_FILE" "Kernel Info"
+    append_safe "| Host | $(uname -n 2>/dev/null || echo 'N/A') |" "$KERNEL_FILE" "Kernel Info"
+else
+    append_safe "| Architecture | uname not available |" "$KERNEL_FILE" "Kernel Info"
+fi
 
-# Detect various root management solutions
-ROOT_METHOD="Unknown"
-ROOT_DETAILS=""
+append_safe "" "$KERNEL_FILE" "Kernel Info"
+append_safe "## Root Management Status" "$KERNEL_FILE" "Kernel Info"
+append_safe "" "$KERNEL_FILE" "Kernel Info"
+
+# Check for root management systems
+ROOT_STATUS="Unknown"
+ROOT_DETAILS="No root management detected"
 
 # Check for Magisk
-if [ -f "/data/adb/magisk/magisk" ] || [ -f "/sbin/magisk" ] || [ -d "/data/adb/magisk" ]; then
-    ROOT_METHOD="Magisk"
-    if [ -f "/data/adb/magisk/magisk" ]; then
-        MAGISK_VERSION=$(/data/adb/magisk/magisk -V 2>/dev/null || echo 'Unknown')
-        ROOT_DETAILS="Version: $MAGISK_VERSION"
+if [ -f "/data/adb/magisk/magisk" ] || [ -f "/data/adb/magisk/magisk64" ] || [ -d "/data/adb/modules" ]; then
+    ROOT_STATUS="Magisk"
+    if command -v magisk >/dev/null 2>&1; then
+        MAGISK_VERSION=$(magisk -c 2>/dev/null || echo 'Version unknown')
+        ROOT_DETAILS="Magisk active (Version: $MAGISK_VERSION)"
+    else
+        ROOT_DETAILS="Magisk files detected but command not in PATH"
     fi
-    append_safe "**Method:** $ROOT_METHOD" "$OUT" "Root Mgmt Info"
-    append_safe "**Details:** $ROOT_DETAILS" "$OUT" "Root Mgmt Info"
+    # Check modules
     if [ -d "/data/adb/modules" ]; then
         MODULE_COUNT=$(ls -1 /data/adb/modules 2>/dev/null | wc -l)
-        append_safe "**Modules:** $MODULE_COUNT modules installed" "$OUT" "Root Mgmt Info"
+        ROOT_DETAILS="$ROOT_DETAILS - $MODULE_COUNT modules installed"
     fi
 # Check for KernelSU
-elif [ -f "/sys/fs/ksu/version" ] || echo "$SU_VERSION_OUTPUT" | grep -q "KernelSU"; then
-    ROOT_METHOD="KernelSU"
+elif [ -f "/data/adb/ksu/ksu" ] || [ -f "/data/adb/ksud" ] || [ -f "/sys/fs/ksu/version" ]; then
+    ROOT_STATUS="KernelSU"
     if [ -f "/sys/fs/ksu/version" ]; then
-        KSU_VERSION=$(cat /sys/fs/ksu/version 2>/dev/null || echo 'Unknown')
-        ROOT_DETAILS="Version: $KSU_VERSION"
+        KSU_VERSION=$(cat /sys/fs/ksu/version 2>/dev/null || echo 'Version unknown')
+        ROOT_DETAILS="KernelSU active (Version: $KSU_VERSION)"
+    elif command -v su >/dev/null 2>&1; then
+        KSU_VERSION=$(su -c "ksud --version" 2>/dev/null || echo 'Version unknown')
+        ROOT_DETAILS="KernelSU active (Version: $KSU_VERSION)"
     else
-        ROOT_DETAILS="Version: $SU_VERSION_OUTPUT"
+        ROOT_DETAILS="KernelSU files detected but su not available"
     fi
-    append_safe "**Method:** $ROOT_METHOD" "$OUT" "Root Mgmt Info"
-    append_safe "**Details:** $ROOT_DETAILS" "$OUT" "Root Mgmt Info"
 # Check for SuperSU
-elif [ -f "/system/bin/daemonsu" ] || [ -f "/system/xbin/daemonsu" ] || echo "$SU_VERSION_OUTPUT" | grep -q "SUPERSU"; then
-    ROOT_METHOD="SuperSU"
-    ROOT_DETAILS="Legacy SuperSU installation detected"
-    append_safe "**Method:** $ROOT_METHOD" "$OUT" "Root Mgmt Info"
-    append_safe "**Details:** $ROOT_DETAILS" "$OUT" "Root Mgmt Info"
-# Check for other su implementations
-elif [ "$SU_BINARY" != "Not found" ]; then
-    ROOT_METHOD="Custom/Other"
-    ROOT_DETAILS="su binary: $SU_BINARY"
-    if [ -n "$SU_VERSION_OUTPUT" ]; then
-        ROOT_DETAILS="$ROOT_DETAILS, Version: $SU_VERSION_OUTPUT"
+elif [ -f "/system/xbin/su" ] || [ -f "/system/bin/su" ] || [ -f "/sbin/su" ]; then
+    ROOT_STATUS="Traditional Root"
+    if command -v su >/dev/null 2>&1; then
+        SU_VERSION=$(su --version 2>/dev/null || echo 'Version unknown')
+        ROOT_DETAILS="Traditional su binary found (Version: $SU_VERSION)"
+    else
+        ROOT_DETAILS="su binary detected but not functional"
     fi
-    append_safe "**Method:** $ROOT_METHOD" "$OUT" "Root Mgmt Info"
-    append_safe "**Details:** $ROOT_DETAILS" "$OUT" "Root Mgmt Info"
+# Check if su command exists without specific binaries
+elif command -v su >/dev/null 2>&1; then
+    ROOT_STATUS="Generic Root"
+    ROOT_DETAILS="su command available but source unknown"
+fi
+
+append_safe "**Status:** $ROOT_STATUS" "$KERNEL_FILE" "Kernel Info"
+append_safe "" "$KERNEL_FILE" "Kernel Info"
+append_safe "**Details:** $ROOT_DETAILS" "$KERNEL_FILE" "Kernel Info"
+append_safe "" "$KERNEL_FILE" "Kernel Info"
+
+# Add root status to summary
+append_safe "**Root Status:** $ROOT_STATUS" "$SUMMARY_FILE" "Summary"
+append_safe "" "$SUMMARY_FILE" "Summary"
+
+log_success "Kernel and root analysis saved to 02-kernel-root.md"
+
+# ---------- BOOT AND SECURITY ----------
+log_info "Checking boot and security status..."
+
+# Initialize boot security file
+append_safe "# Boot and Security Analysis" "$BOOT_FILE" "Boot Security"
+append_safe "" "$BOOT_FILE" "Boot Security"
+append_safe "## Boot State" "$BOOT_FILE" "Boot Security"
+append_safe "" "$BOOT_FILE" "Boot Security"
+append_safe "| Property | Value |" "$BOOT_FILE" "Boot Security"
+append_safe "|----------|-------|" "$BOOT_FILE" "Boot Security"
+
+if command -v getprop >/dev/null 2>&1; then
+    append_safe "| Boot Slot | $(getprop ro.boot.slot_suffix 2>/dev/null || echo 'N/A') |" "$BOOT_FILE" "Boot Security"
+    append_safe "| Verified Boot | $(getprop ro.boot.verifiedbootstate 2>/dev/null || echo 'N/A') |" "$BOOT_FILE" "Boot Security"
+    append_safe "| Boot Mode | $(getprop ro.bootmode 2>/dev/null || echo 'N/A') |" "$BOOT_FILE" "Boot Security"
+    append_safe "| Secure Boot | $(getprop ro.secureboot.lockstate 2>/dev/null || echo 'N/A') |" "$BOOT_FILE" "Boot Security"
+    append_safe "| VBMeta State | $(getprop ro.boot.vbmeta.device_state 2>/dev/null || echo 'N/A') |" "$BOOT_FILE" "Boot Security"
 else
-    append_safe "**Method:** No root management detected" "$OUT" "Root Mgmt Info"
-    append_safe "**Note:** Script may still work with built-in root access" "$OUT" "Root Mgmt Info"
+    append_safe "| Error | getprop command not available |" "$BOOT_FILE" "Boot Security"
 fi
 
-# Check for additional root indicators
-if [ -f "/system/app/Superuser.apk" ] || [ -f "/system/app/SuperSU.apk" ]; then
-    append_safe "**Legacy apps:** Superuser/SuperSU APK detected" "$OUT" "Root Mgmt Info"
+append_safe "" "$BOOT_FILE" "Boot Security"
+append_safe "## Security Features" "$BOOT_FILE" "Boot Security"
+append_safe "" "$BOOT_FILE" "Boot Security"
+append_safe "| Feature | Status |" "$BOOT_FILE" "Boot Security"
+append_safe "|---------|--------|" "$BOOT_FILE" "Boot Security"
+
+if command -v getprop >/dev/null 2>&1; then
+    append_safe "| SELinux | $(getprop ro.boot.selinux 2>/dev/null || echo 'N/A') |" "$BOOT_FILE" "Boot Security"
+    append_safe "| ADB Secure | $(getprop ro.adb.secure 2>/dev/null || echo 'N/A') |" "$BOOT_FILE" "Boot Security"
+    append_safe "| Debug | $(getprop ro.debuggable 2>/dev/null || echo 'N/A') |" "$BOOT_FILE" "Boot Security"
 fi
 
-if [ -f "/system/etc/init.d/99SuperSUDaemon" ]; then
-    append_safe "**Init scripts:** SuperSU daemon script detected" "$OUT" "Root Mgmt Info"
-fi
+# VBMeta analysis if available
+append_safe "" "$BOOT_FILE" "Boot Security"
+append_safe "## VBMeta Analysis" "$BOOT_FILE" "Boot Security"
+append_safe "" "$BOOT_FILE" "Boot Security"
 
-append_safe "" "$OUT" "Root Mgmt Info"
-
-# ---------- BOOT / VB META / VERIFIED STATE ----------
-log_info "Collecting verified boot state..."
-
-append_safe "## 🔒 Verified Boot State" "$OUT" "VB Info"
-append_safe "" "$OUT" "VB Info"
-
-# Get boot state
-BOOT_STATE=$(getprop ro.boot.verifiedbootstate 2>/dev/null || echo 'N/A')
-append_safe "**Boot State:** $BOOT_STATE" "$OUT" "VB Info"
-
-# Additional boot-related properties
-BOOT_MODE=$(getprop ro.bootmode 2>/dev/null || echo 'N/A')
-append_safe "**Boot Mode:** $BOOT_MODE" "$OUT" "VB Info"
-
-VBMETA_STATE=$(getprop ro.boot.vbmeta.device_state 2>/dev/null || echo 'N/A')
-append_safe "**VBMeta Device State:** $VBMETA_STATE" "$OUT" "VB Info"
-
-append_safe "" "$OUT" "VB Info"
-append_safe "### VBMeta Information" "$OUT" "VB Info"
-append_safe "" "$OUT" "VB Info"
-append_safe "\`\`\`" "$OUT" "VB Info"
-
-# Try multiple VBMeta paths and methods
 VBMETA_FOUND=false
-
 if [ -f "/sys/firmware/devicetree/base/vbmeta/0/algorithm" ]; then
-    append_safe "Algorithm (path 0):" "$OUT" "VB Info"
-    if cat /sys/firmware/devicetree/base/vbmeta/0/algorithm >> "$OUT" 2>/dev/null; then
-        VBMETA_FOUND=true
-    else
-        append_safe "Unable to read algorithm" "$OUT" "VB Info"
-    fi
+    ALGO=$(cat /sys/firmware/devicetree/base/vbmeta/0/algorithm 2>/dev/null || echo 'N/A')
+    append_safe "**Algorithm:** $ALGO" "$BOOT_FILE" "Boot Security"
+    VBMETA_FOUND=true
 fi
 
 if [ -f "/sys/firmware/devicetree/base/vbmeta/0/digest" ]; then
-    append_safe "Digest (path 0):" "$OUT" "VB Info"
-    if cat /sys/firmware/devicetree/base/vbmeta/0/digest >> "$OUT" 2>/dev/null; then
-        VBMETA_FOUND=true
-    else
-        append_safe "Unable to read digest" "$OUT" "VB Info"
-    fi
+    DIGEST=$(cat /sys/firmware/devicetree/base/vbmeta/0/digest 2>/dev/null || echo 'N/A')
+    append_safe "**Digest:** $DIGEST" "$BOOT_FILE" "Boot Security"
+    VBMETA_FOUND=true
 fi
-
-# Try alternative paths
-for i in 1 2 3; do
-    if [ -f "/sys/firmware/devicetree/base/vbmeta/$i/algorithm" ]; then
-        append_safe "Algorithm (path $i):" "$OUT" "VB Info"
-        cat /sys/firmware/devicetree/base/vbmeta/$i/algorithm >> "$OUT" 2>/dev/null
-        VBMETA_FOUND=true
-    fi
-done
 
 if [ "$VBMETA_FOUND" = false ]; then
-    append_safe "VBMeta information not accessible via devicetree" "$OUT" "VB Info"
-    append_safe "This is normal on some devices/ROMs" "$OUT" "VB Info"
+    append_safe "**Status:** VBMeta information not accessible" "$BOOT_FILE" "Boot Security"
+    append_safe "*Note: This is normal on some devices/ROMs*" "$BOOT_FILE" "Boot Security"
 fi
 
-append_safe "\`\`\`" "$OUT" "VB Info"
-append_safe "" "$OUT" "VB Info"
-
-# ---------- BOOT / VB META / VERIFIED STATE ----------
-log_info "Collecting verified boot state..."
-
-append_safe "## 🔒 Verified Boot State" "$OUT" "VB Info"
-append_safe "" "$OUT" "VB Info"
-
-# Get boot state
-BOOT_STATE=$(getprop ro.boot.verifiedbootstate 2>/dev/null || echo 'N/A')
-append_safe "**Boot State:** $BOOT_STATE" "$OUT" "VB Info"
-
-# Additional boot-related properties
-BOOT_MODE=$(getprop ro.bootmode 2>/dev/null || echo 'N/A')
-append_safe "**Boot Mode:** $BOOT_MODE" "$OUT" "VB Info"
-
-VBMETA_STATE=$(getprop ro.boot.vbmeta.device_state 2>/dev/null || echo 'N/A')
-append_safe "**VBMeta Device State:** $VBMETA_STATE" "$OUT" "VB Info"
-
-append_safe "" "$OUT" "VB Info"
-append_safe "### VBMeta Information" "$OUT" "VB Info"
-append_safe "" "$OUT" "VB Info"
-append_safe "\`\`\`" "$OUT" "VB Info"
-
-# Try multiple VBMeta paths and methods
-VBMETA_FOUND=false
-
-if [ -f "/sys/firmware/devicetree/base/vbmeta/0/algorithm" ]; then
-    append_safe "Algorithm (path 0):" "$OUT" "VB Info"
-    if cat /sys/firmware/devicetree/base/vbmeta/0/algorithm >> "$OUT" 2>/dev/null; then
-        VBMETA_FOUND=true
-    else
-        append_safe "Unable to read algorithm" "$OUT" "VB Info"
-    fi
-fi
-
-if [ -f "/sys/firmware/devicetree/base/vbmeta/0/digest" ]; then
-    append_safe "Digest (path 0):" "$OUT" "VB Info"
-    if cat /sys/firmware/devicetree/base/vbmeta/0/digest >> "$OUT" 2>/dev/null; then
-        VBMETA_FOUND=true
-    else
-        append_safe "Unable to read digest" "$OUT" "VB Info"
-    fi
-fi
-
-# Try alternative paths
-for i in 1 2 3; do
-    if [ -f "/sys/firmware/devicetree/base/vbmeta/$i/algorithm" ]; then
-        append_safe "Algorithm (path $i):" "$OUT" "VB Info"
-        cat /sys/firmware/devicetree/base/vbmeta/$i/algorithm >> "$OUT" 2>/dev/null
-        VBMETA_FOUND=true
-    fi
-done
-
-if [ "$VBMETA_FOUND" = false ]; then
-    append_safe "VBMeta information not accessible via devicetree" "$OUT" "VB Info"
-    append_safe "This is normal on some devices/ROMs" "$OUT" "VB Info"
-fi
-
-append_safe "\`\`\`" "$OUT" "VB Info"
-append_safe "" "$OUT" "VB Info"
-
-log_success "Verified boot information collected"
+append_safe "" "$BOOT_FILE" "Boot Security"
+log_success "Boot and security analysis saved to 03-boot-security.md"
 
 # ---------- HARDWARE INFORMATION ----------
 log_info "Collecting hardware information..."
 
-append_safe "## 💻 CPU Information" "$OUT" "CPU Info"
-append_safe "" "$OUT" "CPU Info"
-append_safe "<details>" "$OUT" "CPU Info"
-append_safe "<summary>Click to expand CPU details</summary>" "$OUT" "CPU Info"
-append_safe "" "$OUT" "CPU Info"
-append_safe "\`\`\`" "$OUT" "CPU Info"
-if ! cat /proc/cpuinfo >> "$OUT" 2>/dev/null; then
-    append_safe "CPU information unavailable" "$OUT" "CPU Info"
-fi
-append_safe "\`\`\`" "$OUT" "CPU Info"
-append_safe "" "$OUT" "CPU Info"
-append_safe "</details>" "$OUT" "CPU Info"
-append_safe "" "$OUT" "CPU Info"
+# Initialize hardware file
+append_safe "# Hardware Information" "$HARDWARE_FILE" "Hardware Info"
+append_safe "" "$HARDWARE_FILE" "Hardware Info"
+append_safe "## CPU Information" "$HARDWARE_FILE" "Hardware Info"
+append_safe "" "$HARDWARE_FILE" "Hardware Info"
 
-append_safe "## 🧠 Memory Information" "$OUT" "Memory Info"
-append_safe "" "$OUT" "Memory Info"
-append_safe "<details>" "$OUT" "Memory Info"
-append_safe "<summary>Click to expand memory details</summary>" "$OUT" "Memory Info"
-append_safe "" "$OUT" "Memory Info"
-append_safe "\`\`\`" "$OUT" "Memory Info"
-if ! cat /proc/meminfo >> "$OUT" 2>/dev/null; then
-    append_safe "Memory information unavailable" "$OUT" "Memory Info"
+if [ -r "/proc/cpuinfo" ]; then
+    # Extract key CPU details
+    CPU_MODEL=$(grep "model name" /proc/cpuinfo | head -1 | cut -d: -f2 | sed 's/^[[:space:]]*//' 2>/dev/null || echo 'N/A')
+    CPU_CORES=$(grep "processor" /proc/cpuinfo | wc -l 2>/dev/null || echo 'N/A')
+    CPU_ARCH=$(grep "Features" /proc/cpuinfo | head -1 | cut -d: -f2 | sed 's/^[[:space:]]*//' 2>/dev/null || echo 'N/A')
+    
+    append_safe "| Property | Value |" "$HARDWARE_FILE" "Hardware Info"
+    append_safe "|----------|-------|" "$HARDWARE_FILE" "Hardware Info"
+    append_safe "| Model | $CPU_MODEL |" "$HARDWARE_FILE" "Hardware Info"
+    append_safe "| Cores | $CPU_CORES |" "$HARDWARE_FILE" "Hardware Info"
+    append_safe "| Architecture | $CPU_ARCH |" "$HARDWARE_FILE" "Hardware Info"
+else
+    append_safe "**Error:** /proc/cpuinfo not accessible" "$HARDWARE_FILE" "Hardware Info"
 fi
-append_safe "\`\`\`" "$OUT" "Memory Info"
-append_safe "" "$OUT" "Memory Info"
+
+append_safe "" "$HARDWARE_FILE" "Hardware Info"
+append_safe "## Memory Information" "$HARDWARE_FILE" "Hardware Info"
+append_safe "" "$HARDWARE_FILE" "Hardware Info"
+
+if [ -r "/proc/meminfo" ]; then
+    # Extract key memory details
+    MEM_TOTAL=$(grep "MemTotal" /proc/meminfo | awk '{print $2 " " $3}' 2>/dev/null || echo 'N/A')
+    MEM_FREE=$(grep "MemFree" /proc/meminfo | awk '{print $2 " " $3}' 2>/dev/null || echo 'N/A')
+    MEM_AVAILABLE=$(grep "MemAvailable" /proc/meminfo | awk '{print $2 " " $3}' 2>/dev/null || echo 'N/A')
+    
+    append_safe "| Property | Value |" "$HARDWARE_FILE" "Hardware Info"
+    append_safe "|----------|-------|" "$HARDWARE_FILE" "Hardware Info"
+    append_safe "| Total Memory | $MEM_TOTAL |" "$HARDWARE_FILE" "Hardware Info"
+    append_safe "| Free Memory | $MEM_FREE |" "$HARDWARE_FILE" "Hardware Info"
+    append_safe "| Available Memory | $MEM_AVAILABLE |" "$HARDWARE_FILE" "Hardware Info"
+else
+    append_safe "**Error:** /proc/meminfo not accessible" "$HARDWARE_FILE" "Hardware Info"
+fi
+
+append_safe "" "$HARDWARE_FILE" "Hardware Info"
+log_success "Hardware information saved to 04-hardware.md"
 append_safe "</details>" "$OUT" "Memory Info"
 append_safe "" "$OUT" "Memory Info"
 
-# ---------- STORAGE + PARTITIONS ----------
+# ---------- STORAGE AND PARTITIONS ----------
 log_info "Collecting storage and partition information..."
 
-append_safe "## 💾 Storage Information" "$OUT" "Storage Info"
-append_safe "" "$OUT" "Storage Info"
-append_safe "### Disk Usage" "$OUT" "Storage Info"
-append_safe "\`\`\`" "$OUT" "Storage Info"
-if ! df -h >> "$OUT" 2>/dev/null; then
-    append_safe "Disk usage information unavailable" "$OUT" "Storage Info"
-    log_warning "Failed to get disk usage information"
+# Initialize storage file
+append_safe "# Storage and Partitions" "$STORAGE_FILE" "Storage Info"
+append_safe "" "$STORAGE_FILE" "Storage Info"
+append_safe "## Storage Overview" "$STORAGE_FILE" "Storage Info"
+append_safe "" "$STORAGE_FILE" "Storage Info"
+
+# Disk usage
+append_safe "### Disk Usage" "$STORAGE_FILE" "Storage Info"
+append_safe "\`\`\`" "$STORAGE_FILE" "Storage Info"
+if command -v df >/dev/null 2>&1; then
+    df -h >> "$STORAGE_FILE" 2>/dev/null || append_safe "Disk usage information unavailable" "$STORAGE_FILE" "Storage Info"
+else
+    append_safe "df command not available" "$STORAGE_FILE" "Storage Info"
 fi
-append_safe "\`\`\`" "$OUT" "Storage Info"
-append_safe "" "$OUT" "Storage Info"
+append_safe "\`\`\`" "$STORAGE_FILE" "Storage Info"
+append_safe "" "$STORAGE_FILE" "Storage Info"
 
-append_safe "### Partition Table" "$OUT" "Storage Info"
-append_safe "\`\`\`" "$OUT" "Storage Info"
+# Partition information
+append_safe "### Partition Table" "$STORAGE_FILE" "Storage Info"
+append_safe "\`\`\`" "$STORAGE_FILE" "Storage Info"
 
-# Try multiple methods for partition information
 PART_INFO_FOUND=false
 
 # Try lsblk first
 if command -v lsblk >/dev/null 2>&1; then
-    if lsblk >> "$OUT" 2>/dev/null && [ $? -eq 0 ]; then
+    if lsblk >> "$STORAGE_FILE" 2>/dev/null && [ $? -eq 0 ]; then
         PART_INFO_FOUND=true
     fi
 fi
 
 # Fallback to /proc/partitions if lsblk failed
-if [ "$PART_INFO_FOUND" = false ] && [ -f "/proc/partitions" ]; then
-    append_safe "=== /proc/partitions ===" "$OUT" "Storage Info"
-    if cat /proc/partitions >> "$OUT" 2>/dev/null; then
-        PART_INFO_FOUND=true
-    fi
-fi
-
-# Try fdisk as another fallback
-if [ "$PART_INFO_FOUND" = false ] && command -v fdisk >/dev/null 2>&1; then
-    append_safe "=== Available block devices ===" "$OUT" "Storage Info"
-    if fdisk -l >> "$OUT" 2>/dev/null; then
+if [ "$PART_INFO_FOUND" = false ] && [ -r "/proc/partitions" ]; then
+    append_safe "=== /proc/partitions ===" "$STORAGE_FILE" "Storage Info"
+    if cat /proc/partitions >> "$STORAGE_FILE" 2>/dev/null; then
         PART_INFO_FOUND=true
     fi
 fi
 
 if [ "$PART_INFO_FOUND" = false ]; then
-    append_safe "Partition information unavailable" "$OUT" "Storage Info"
-    append_safe "This may be due to permissions or missing tools" "$OUT" "Storage Info"
+    append_safe "Partition information unavailable" "$STORAGE_FILE" "Storage Info"
 fi
 
-append_safe "\`\`\`" "$OUT" "Storage Info"
-append_safe "" "$OUT" "Storage Info"
+append_safe "\`\`\`" "$STORAGE_FILE" "Storage Info"
+append_safe "" "$STORAGE_FILE" "Storage Info"
 
-append_safe "<details>" "$OUT" "Storage Info"
-append_safe "<summary>Mount Points (/proc/mounts)</summary>" "$OUT" "Storage Info"
-append_safe "" "$OUT" "Storage Info"
-append_safe "\`\`\`" "$OUT" "Storage Info"
-if ! cat /proc/mounts >> "$OUT" 2>/dev/null; then
-    append_safe "Mount information unavailable" "$OUT" "Storage Info"
-    log_warning "Failed to read /proc/mounts"
+# Mount points
+append_safe "### Mount Points" "$STORAGE_FILE" "Storage Info"
+append_safe "\`\`\`" "$STORAGE_FILE" "Storage Info"
+if [ -r "/proc/mounts" ]; then
+    cat /proc/mounts >> "$STORAGE_FILE" 2>/dev/null || append_safe "Unable to read mount information" "$STORAGE_FILE" "Storage Info"
+else
+    append_safe "/proc/mounts not accessible" "$STORAGE_FILE" "Storage Info"
 fi
-append_safe "\`\`\`" "$OUT" "Storage Info"
-append_safe "" "$OUT" "Storage Info"
-append_safe "</details>" "$OUT" "Storage Info"
-append_safe "" "$OUT" "Storage Info"
+append_safe "\`\`\`" "$STORAGE_FILE" "Storage Info"
+append_safe "" "$STORAGE_FILE" "Storage Info"
 
-append_safe "<details>" "$OUT" "Storage Info"
-append_safe "<summary>FSTAB Files</summary>" "$OUT" "Storage Info"
-append_safe "" "$OUT" "Storage Info"
-append_safe "\`\`\`" "$OUT" "Storage Info"
-
-FSTAB_FOUND=false
-
-# Check multiple FSTAB locations
-for fstab_path in "/vendor/etc/fstab*" "/system/etc/fstab*" "/etc/fstab*"; do
-    if ls $fstab_path >/dev/null 2>&1; then
-        append_safe "=== $fstab_path ===" "$OUT" "Storage Info"
-        if cat $fstab_path >> "$OUT" 2>/dev/null; then
-            FSTAB_FOUND=true
-        fi
-    fi
-done
-
-if [ "$FSTAB_FOUND" = false ]; then
-    append_safe "No accessible FSTAB files found" "$OUT" "Storage Info"
-fi
-
-append_safe "\`\`\`" "$OUT" "Storage Info"
-append_safe "" "$OUT" "Storage Info"
-append_safe "</details>" "$OUT" "Storage Info"
-append_safe "" "$OUT" "Storage Info"
+log_success "Storage information saved to 05-storage.md"
 
 # ---------- HARDWARE SERVICES ----------
 log_info "Collecting hardware service information..."
@@ -862,82 +813,117 @@ append_safe "" "$OUT" "Sensor Info"
 append_safe "</details>" "$OUT" "Sensor Info"
 append_safe "" "$OUT" "Sensor Info"
 
-# ---------- SOFTWARE ----------
-log_info "Collecting software information..."
+# ---------- SOFTWARE AND APPLICATIONS ----------
+log_info "Collecting software and application information..."
 
-append_safe "## 📦 Software" "$OUT" "Software Info"
-append_safe "" "$OUT" "Software Info"
-append_safe "<details>" "$OUT" "Software Info"
-append_safe "<summary>Installed Packages</summary>" "$OUT" "Software Info"
-append_safe "" "$OUT" "Software Info"
-append_safe "\`\`\`" "$OUT" "Software Info"
+# Initialize software file
+append_safe "# Software and Applications" "$SOFTWARE_FILE" "Software Info"
+append_safe "" "$SOFTWARE_FILE" "Software Info"
+append_safe "## Installed Packages" "$SOFTWARE_FILE" "Software Info"
+append_safe "" "$SOFTWARE_FILE" "Software Info"
+
 if command -v pm >/dev/null 2>&1; then
-    if ! pm list packages >> "$OUT" 2>/dev/null; then
-        append_safe "Package list unavailable" "$OUT" "Software Info"
-    fi
+    PACKAGE_COUNT=$(pm list packages 2>/dev/null | wc -l)
+    append_safe "**Total Packages:** $PACKAGE_COUNT" "$SOFTWARE_FILE" "Software Info"
+    append_safe "" "$SOFTWARE_FILE" "Software Info"
+    append_safe "\`\`\`" "$SOFTWARE_FILE" "Software Info"
+    pm list packages 2>/dev/null | head -n 100 >> "$SOFTWARE_FILE" || append_safe "Package list unavailable" "$SOFTWARE_FILE" "Software Info"
+    append_safe "\`\`\`" "$SOFTWARE_FILE" "Software Info"
 else
-    append_safe "pm command not available" "$OUT" "Software Info"
+    append_safe "**Error:** pm command not available" "$SOFTWARE_FILE" "Software Info"
 fi
-append_safe "\`\`\`" "$OUT" "Software Info"
-append_safe "" "$OUT" "Software Info"
-append_safe "</details>" "$OUT" "Software Info"
-append_safe "" "$OUT" "Software Info"
 
-append_safe "<details>" "$OUT" "Software Info"
-append_safe "<summary>Activity Manager (Top 150 lines)</summary>" "$OUT" "Software Info"
-append_safe "" "$OUT" "Software Info"
-append_safe "\`\`\`" "$OUT" "Software Info"
+append_safe "" "$SOFTWARE_FILE" "Software Info"
+append_safe "## System Activities" "$SOFTWARE_FILE" "Software Info"
+append_safe "" "$SOFTWARE_FILE" "Software Info"
+
 if command -v dumpsys >/dev/null 2>&1; then
-    if ! dumpsys activity activities | head -n 150 >> "$OUT" 2>/dev/null; then
-        append_safe "Activity manager information unavailable" "$OUT" "Software Info"
+    append_safe "\`\`\`" "$SOFTWARE_FILE" "Software Info"
+    dumpsys activity activities 2>/dev/null | head -n 50 >> "$SOFTWARE_FILE" || append_safe "Activity manager information unavailable" "$SOFTWARE_FILE" "Software Info"
+    append_safe "\`\`\`" "$SOFTWARE_FILE" "Software Info"
+else
+    append_safe "**Error:** dumpsys command not available" "$SOFTWARE_FILE" "Software Info"
+fi
+
+append_safe "" "$SOFTWARE_FILE" "Software Info"
+log_success "Software information saved to 07-software.md"
+
+# Add missing sections to complete the 6-services file
+append_safe "# System Services and Hardware" "$SERVICES_FILE" "Services Info"
+append_safe "" "$SERVICES_FILE" "Services Info"
+append_safe "## Hardware Services" "$SERVICES_FILE" "Services Info"
+append_safe "" "$SERVICES_FILE" "Services Info"
+
+if command -v dumpsys >/dev/null 2>&1; then
+    # Battery information
+    append_safe "### Battery Information" "$SERVICES_FILE" "Services Info"
+    append_safe "\`\`\`" "$SERVICES_FILE" "Services Info"
+    dumpsys battery 2>/dev/null | head -n 30 >> "$SERVICES_FILE" || append_safe "Battery service unavailable" "$SERVICES_FILE" "Services Info"
+    append_safe "\`\`\`" "$SERVICES_FILE" "Services Info"
+    append_safe "" "$SERVICES_FILE" "Services Info"
+    
+    # Display information
+    append_safe "### Display Information" "$SERVICES_FILE" "Services Info"
+    append_safe "\`\`\`" "$SERVICES_FILE" "Services Info"
+    dumpsys display 2>/dev/null | head -n 30 >> "$SERVICES_FILE" || append_safe "Display service unavailable" "$SERVICES_FILE" "Services Info"
+    append_safe "\`\`\`" "$SERVICES_FILE" "Services Info"
+    append_safe "" "$SERVICES_FILE" "Services Info"
+else
+    append_safe "**Error:** dumpsys command not available" "$SERVICES_FILE" "Services Info"
+fi
+
+log_success "System services saved to 06-services.md"
+
+# ---------- FINALIZE AND COMPLETE ----------
+log_info "Finalizing analysis and generating summary..."
+
+# Complete summary file
+append_safe "" "$SUMMARY_FILE" "Summary"
+append_safe "## Analysis Complete" "$SUMMARY_FILE" "Summary"
+append_safe "" "$SUMMARY_FILE" "Summary"
+append_safe "**Export completed:** $(date 2>/dev/null || echo 'Date unavailable')" "$SUMMARY_FILE" "Summary"
+append_safe "**Total files generated:** 8" "$SUMMARY_FILE" "Summary"
+append_safe "" "$SUMMARY_FILE" "Summary"
+append_safe "*Generated by Speccy v4.0 - Universal Android Device Analyzer*" "$SUMMARY_FILE" "Summary"
+
+echo ""
+echo "════════════════════════════════════════════════════════"
+echo "[SUCCESS] SPECCY ANALYSIS COMPLETED"
+echo "════════════════════════════════════════════════════════"
+
+# Verify all files were created
+TOTAL_FILES=0
+for file in "$SUMMARY_FILE" "$DEVICE_FILE" "$KERNEL_FILE" "$BOOT_FILE" "$HARDWARE_FILE" "$STORAGE_FILE" "$SERVICES_FILE" "$SOFTWARE_FILE"; do
+    if [ -f "$file" ]; then
+        TOTAL_FILES=$((TOTAL_FILES + 1))
+    else
+        log_warning "File not created: $file"
     fi
+done
+
+echo "[INFO] Output Directory: $OUTPUT_DIR"
+echo "[INFO] Files Generated: $TOTAL_FILES/8"
+echo "[INFO] Analysis ID: ${DATE_STR}"
+echo ""
+echo "[INFO] Generated Files:"
+echo "  • 00-SUMMARY.md      - Analysis overview and file index"
+echo "  • 01-device-info.md  - Device specifications and build info"
+echo "  • 02-kernel-root.md  - Kernel version and root management"
+echo "  • 03-boot-security.md - Boot state and security features"
+echo "  • 04-hardware.md     - CPU, memory, and hardware details"
+echo "  • 05-storage.md      - Storage, partitions, and file systems"
+echo "  • 06-services.md     - System services and hardware interfaces"
+echo "  • 07-software.md     - Installed packages and applications"
+echo "  • export.log         - Analysis process log and error details"
+echo ""
+
+if [ "$TOTAL_FILES" -eq 8 ]; then
+    echo "[SUCCESS] All files generated successfully!"
+    echo "[INFO] View summary: cat \"$SUMMARY_FILE\""
+    echo "[INFO] Browse directory: ls -la \"$OUTPUT_DIR\""
 else
-    append_safe "dumpsys command not available" "$OUT" "Software Info"
-fi
-append_safe "\`\`\`" "$OUT" "Software Info"
-append_safe "" "$OUT" "Software Info"
-append_safe "</details>" "$OUT" "Software Info"
-append_safe "" "$OUT" "Software Info"
-
-# ---------- FINAL OUTPUT ----------
-append_safe "---" "$OUT" "Footer"
-append_safe "" "$OUT" "Footer"
-append_safe "**Report generated by speccy.sh**" "$OUT" "Footer"
-append_safe "**Export completed:** $(date 2>/dev/null || echo 'Date unavailable')" "$OUT" "Footer"
-
-echo ""
-echo "════════════════════════════════════════════════════════"
-echo "🎉 SPECCY EXPORT COMPLETED SUCCESSFULLY"
-echo "════════════════════════════════════════════════════════"
-
-# Verify file was created and has content
-if [ ! -f "$OUT" ]; then
-    handle_error 3 "Output file was not created: $OUT" "Check write permissions and disk space"
-fi
-
-file_size=$(wc -c < "$OUT" 2>/dev/null || echo "0")
-if [ "$file_size" -lt 100 ]; then
-    handle_error 3 "Output file appears to be empty or corrupted" "Check if all commands executed properly"
-fi
-
-echo "📄 Report File: $OUT"
-echo "📊 File Size: $file_size bytes"
-echo "📅 Timestamp: $(date 2>/dev/null || echo 'Date unavailable')"
-echo ""
-echo "🔍 REPORT PREVIEW (First 50 lines):"
-echo "────────────────────────────────────────────────────────"
-
-# Show only a preview of the file, not the entire content
-if ! head -n 50 "$OUT" 2>/dev/null; then
-    log_error "Failed to display file preview"
-    echo "File location: $OUT"
-else
-    echo ""
-    echo "────────────────────────────────────────────────────────"
-    echo "📖 Full report available at: $OUT"
-    echo "💡 Use 'cat $OUT' to view complete content"
-    echo "💡 Use 'less $OUT' for paginated viewing"
+    log_warning "Some files were not generated - check export.log for details"
 fi
 
 echo ""
-log_success "Export completed successfully!"
+log_success "Speccy analysis completed successfully!"
