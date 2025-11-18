@@ -55,90 +55,263 @@
 #  • Treat repeated dumps as time-series data.
 # ============================================================
 
+# ---------- ERROR HANDLING FUNCTIONS ----------
+# Exit codes:
+# 1 = Missing critical dependencies
+# 2 = Insufficient permissions
+# 3 = File/directory access error
+# 4 = Command execution failure
+
+log_info() {
+    echo "ℹ️  $1"
+}
+
+log_success() {
+    echo "✅ $1"
+}
+
+log_warning() {
+    echo "⚠️  $1"
+}
+
+log_error() {
+    echo "❌ $1" >&2
+}
+
+log_critical() {
+    echo "🚨 CRITICAL: $1" >&2
+}
+
+handle_error() {
+    local error_code="$1"
+    local error_msg="$2"
+    local suggestion="$3"
+    
+    log_critical "$error_msg"
+    [ -n "$suggestion" ] && echo "💡 Suggestion: $suggestion"
+    echo "🔍 Error Code: $error_code"
+    exit "$error_code"
+}
+
+check_permissions() {
+    # Check if we can write to target directory
+    local target_dir=$(dirname "$OUT")
+    
+    if [ ! -d "$target_dir" ]; then
+        log_warning "Target directory doesn't exist: $target_dir"
+        if ! mkdir -p "$target_dir" 2>/dev/null; then
+            handle_error 3 "Cannot create target directory: $target_dir" "Try running with sudo or choose a different location"
+        fi
+        log_success "Created target directory: $target_dir"
+    fi
+    
+    if [ ! -w "$target_dir" ]; then
+        handle_error 2 "No write permission to: $target_dir" "Try running with sudo or choose a writable location"
+    fi
+}
+
+safe_execute() {
+    local cmd="$1"
+    local description="$2"
+    local is_critical="${3:-false}"
+    
+    log_info "Executing: $description"
+    
+    if eval "$cmd" 2>/dev/null; then
+        return 0
+    else
+        local exit_code=$?
+        if [ "$is_critical" = "true" ]; then
+            handle_error 4 "Failed to execute critical command: $cmd" "Check if required tools are installed and accessible"
+        else
+            log_warning "Non-critical command failed: $cmd (continuing...)"
+            return $exit_code
+        fi
+    fi
+}
+
+append_safe() {
+    local content="$1"
+    local file="$2"
+    local section="$3"
+    
+    if ! echo "$content" >> "$file" 2>/dev/null; then
+        log_error "Failed to write to file: $file"
+        log_warning "Skipping section: $section"
+        return 1
+    fi
+    return 0
+}
+
+cleanup_on_exit() {
+    local exit_code=$?
+    if [ $exit_code -ne 0 ] && [ -f "$OUT" ]; then
+        log_info "Cleaning up incomplete file due to error..."
+        rm -f "$OUT" 2>/dev/null
+    fi
+}
+
+# Set up cleanup trap
+trap cleanup_on_exit EXIT INT TERM
+
 # ---------- DEPENDENCY CHECKS ----------
-echo "🔍 Checking dependencies..."
+log_info "Checking dependencies..."
 
 # Check if we're running on Android
 if [ -d "/sdcard" ]; then
     ANDROID_ENV=true
-    echo "✅ Android environment detected"
+    log_success "Android environment detected"
 else
     ANDROID_ENV=false
-    echo "ℹ️  Non-Android environment detected"
+    log_info "Non-Android environment detected"
 fi
 
 # Check for required commands
 MISSING_DEPS=""
-for cmd in getprop uname df lsblk dumpsys pm; do
+CRITICAL_DEPS="uname date"
+ANDROID_DEPS="getprop dumpsys pm"
+OPTIONAL_DEPS="df lsblk"
+
+# Check critical dependencies
+for cmd in $CRITICAL_DEPS; do
     if ! command -v "$cmd" >/dev/null 2>&1; then
         MISSING_DEPS="$MISSING_DEPS $cmd"
     fi
 done
 
+# Check Android-specific dependencies if on Android
+if [ "$ANDROID_ENV" = true ]; then
+    for cmd in $ANDROID_DEPS; do
+        if ! command -v "$cmd" >/dev/null 2>&1; then
+            MISSING_DEPS="$MISSING_DEPS $cmd"
+        fi
+    done
+fi
+
+# Check optional dependencies (warn but don't fail)
+MISSING_OPTIONAL=""
+for cmd in $OPTIONAL_DEPS; do
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+        MISSING_OPTIONAL="$MISSING_OPTIONAL $cmd"
+    fi
+done
+
+# Handle missing critical dependencies
 if [ -n "$MISSING_DEPS" ]; then
-    echo "⚠️  Missing dependencies:$MISSING_DEPS"
-    echo "📦 Installing missing packages..."
+    log_warning "Missing critical dependencies:$MISSING_DEPS"
+    log_info "Installing missing packages..."
     
     # Termux package installation
     if command -v pkg >/dev/null 2>&1; then
-        echo "📱 Termux detected, installing packages..."
-        pkg update -y >/dev/null 2>&1
-        pkg install -y util-linux coreutils >/dev/null 2>&1
-        echo "✅ Termux packages updated"
+        log_info "Termux detected, updating packages..."
+        if ! safe_execute "pkg update -y" "Updating package list" false; then
+            log_warning "Package update failed, continuing anyway..."
+        fi
+        if ! safe_execute "pkg install -y util-linux coreutils" "Installing essential packages" false; then
+            log_warning "Package installation failed, some features may not work"
+        else
+            log_success "Termux packages updated successfully"
+        fi
     fi
     
-    # Check again after installation
-    for cmd in getprop uname df; do
+    # Verify critical dependencies after installation
+    for cmd in $CRITICAL_DEPS; do
         if ! command -v "$cmd" >/dev/null 2>&1; then
-            echo "❌ Critical dependency '$cmd' still missing"
-            echo "💡 Please install manually or run in proper Android environment"
+            handle_error 1 "Critical dependency '$cmd' is missing and could not be installed" "Please install manually or run in proper environment"
         fi
     done
+    
+    # Check Android deps again if on Android
+    if [ "$ANDROID_ENV" = true ]; then
+        for cmd in $ANDROID_DEPS; do
+            if ! command -v "$cmd" >/dev/null 2>&1; then
+                handle_error 1 "Critical Android dependency '$cmd' is missing" "Ensure you're running on a proper Android system with root access"
+            fi
+        done
+    fi
 else
-    echo "✅ All dependencies available"
+    log_success "All critical dependencies available"
+fi
+
+# Warn about optional dependencies
+if [ -n "$MISSING_OPTIONAL" ]; then
+    log_warning "Missing optional dependencies:$MISSING_OPTIONAL"
+    log_info "Some sections may have limited information"
 fi
 
 # ---------- OUTPUT PATH DETECTION ----------
 # Generate date-formatted filename
-DATE_STR=$(date '+%d-%m-%y' 2>/dev/null || echo "$(date | cut -d' ' -f3,2,6 | sed 's/ /-/g' | cut -c1-8)")
+if ! DATE_STR=$(date '+%d-%m-%y' 2>/dev/null); then
+    log_warning "Standard date command failed, using fallback"
+    DATE_STR=$(date 2>/dev/null | cut -d' ' -f3,2,6 | sed 's/ /-/g' | cut -c1-8 2>/dev/null || echo "unknown")
+fi
+
+if [ "$DATE_STR" = "unknown" ]; then
+    log_warning "Date detection failed, using timestamp"
+    DATE_STR="$(date +%s 2>/dev/null || echo 'nodate')"
+fi
+
 FILENAME="speccy-${DATE_STR}.md"
 
 # Determine output path
 if [ "$ANDROID_ENV" = true ] && [ -d "/sdcard/Download" ]; then
     OUT="/sdcard/Download/$FILENAME"
-    echo "📂 Output: Android Downloads directory"
+    log_info "Output: Android Downloads directory"
 elif [ -d "$HOME/Downloads" ]; then
     OUT="$HOME/Downloads/$FILENAME"
-    echo "📂 Output: User Downloads directory"
+    log_info "Output: User Downloads directory"
 else
     OUT="./$FILENAME"
-    echo "📂 Output: Current directory"
+    log_info "Output: Current directory"
 fi
 
-echo "📄 File: $OUT"
+log_info "File: $OUT"
+
+# Check permissions and create directory if needed
+check_permissions
+
 echo ""
 
-echo "# Android Device Specification Report" > "$OUT"
-echo "" >> "$OUT"
-echo "**Generated:** $(date)" >> "$OUT"
-echo "**Export Tool:** KRYPTON v3" >> "$OUT"
-echo "" >> "$OUT"
+# ---------- INITIALIZE OUTPUT FILE ----------
+log_info "Initializing output file..."
+
+if ! append_safe "# Android Device Specification Report" "$OUT" "Header"; then
+    handle_error 3 "Cannot write to output file: $OUT" "Check write permissions and disk space"
+fi
+
+append_safe "" "$OUT" "Header"
+append_safe "**Generated:** $(date 2>/dev/null || echo 'Date unavailable')" "$OUT" "Header"
+append_safe "**Export Tool:** KRYPTON v3" "$OUT" "Header"
+append_safe "" "$OUT" "Header"
+
+log_success "Output file initialized"
 
 # ---------- BASIC DEVICE IDENTITIES ----------
-echo "## 📱 Device Information" >> "$OUT"
-echo "" >> "$OUT"
-echo "| Property | Value |" >> "$OUT"
-echo "|----------|-------|" >> "$OUT"
-echo "| Model | $(getprop ro.product.model) |" >> "$OUT"
-echo "| Device | $(getprop ro.product.device) |" >> "$OUT"
-echo "| Brand | $(getprop ro.product.brand) |" >> "$OUT"
-echo "| Manufacturer | $(getprop ro.product.manufacturer) |" >> "$OUT"
-echo "| Fingerprint | $(getprop ro.build.fingerprint) |" >> "$OUT"
-echo "| Build ID | $(getprop ro.build.id) |" >> "$OUT"
-echo "| Android Version | $(getprop ro.build.version.release) |" >> "$OUT"
-echo "| Security Patch | $(getprop ro.build.version.security_patch) |" >> "$OUT"
-echo "| ROM Type | $(getprop ro.boot.verifiedbootstate) |" >> "$OUT"
-echo "" >> "$OUT"
+log_info "Collecting device information..."
+
+append_safe "## 📱 Device Information" "$OUT" "Device Info"
+append_safe "" "$OUT" "Device Info"
+append_safe "| Property | Value |" "$OUT" "Device Info"
+append_safe "|----------|-------|" "$OUT" "Device Info"
+
+# Collect device properties with error handling
+if command -v getprop >/dev/null 2>&1; then
+    append_safe "| Model | $(getprop ro.product.model 2>/dev/null || echo 'N/A') |" "$OUT" "Device Info"
+    append_safe "| Device | $(getprop ro.product.device 2>/dev/null || echo 'N/A') |" "$OUT" "Device Info"
+    append_safe "| Brand | $(getprop ro.product.brand 2>/dev/null || echo 'N/A') |" "$OUT" "Device Info"
+    append_safe "| Manufacturer | $(getprop ro.product.manufacturer 2>/dev/null || echo 'N/A') |" "$OUT" "Device Info"
+    append_safe "| Fingerprint | $(getprop ro.build.fingerprint 2>/dev/null || echo 'N/A') |" "$OUT" "Device Info"
+    append_safe "| Build ID | $(getprop ro.build.id 2>/dev/null || echo 'N/A') |" "$OUT" "Device Info"
+    append_safe "| Android Version | $(getprop ro.build.version.release 2>/dev/null || echo 'N/A') |" "$OUT" "Device Info"
+    append_safe "| Security Patch | $(getprop ro.build.version.security_patch 2>/dev/null || echo 'N/A') |" "$OUT" "Device Info"
+    append_safe "| ROM Type | $(getprop ro.boot.verifiedbootstate 2>/dev/null || echo 'N/A') |" "$OUT" "Device Info"
+    log_success "Device information collected"
+else
+    append_safe "| Error | getprop command not available |" "$OUT" "Device Info"
+    log_warning "getprop not available - device info limited"
+fi
+
+append_safe "" "$OUT" "Device Info"
 
 # ---------- KERNEL + ROOT STATE ----------
 echo "## 🔧 Kernel Information" >> "$OUT"
@@ -354,13 +527,33 @@ echo "" >> "$OUT"
 echo "</details>" >> "$OUT"
 echo "" >> "$OUT"
 
-# ---------- END ----------
-echo "---" >> "$OUT"
-echo "" >> "$OUT"
-echo "**Report generated by speccy.sh**" >> "$OUT"
-echo "**Export completed:** $(date)" >> "$OUT"
+# ---------- FINAL OUTPUT ----------
+append_safe "---" "$OUT" "Footer"
+append_safe "" "$OUT" "Footer"
+append_safe "**Report generated by speccy.sh**" "$OUT" "Footer"
+append_safe "**Export completed:** $(date 2>/dev/null || echo 'Date unavailable')" "$OUT" "Footer"
 
-echo "🔥 Spec exported to: $OUT"
-echo "📖 Displaying content in terminal:"
+log_success "Spec exported to: $OUT"
+
+# Verify file was created and has content
+if [ ! -f "$OUT" ]; then
+    handle_error 3 "Output file was not created: $OUT" "Check write permissions and disk space"
+fi
+
+file_size=$(wc -c < "$OUT" 2>/dev/null || echo "0")
+if [ "$file_size" -lt 100 ]; then
+    handle_error 3 "Output file appears to be empty or corrupted" "Check if all commands executed properly"
+fi
+
+log_info "File size: $file_size bytes"
+log_info "Displaying content in terminal:"
 echo ""
-cat "$OUT"
+
+# Safe file display with error handling
+if ! cat "$OUT" 2>/dev/null; then
+    log_error "Failed to display file content"
+    log_info "File location: $OUT"
+    exit 3
+fi
+
+log_success "Export completed successfully!"

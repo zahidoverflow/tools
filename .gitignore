@@ -1,0 +1,124 @@
+# Windows
+desktop.ini
+Thumbs.db
+ehthumbs.db
+ehthumbs_vista.db
+*.tmp
+*.temp
+~$*
+*.lnk
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# IDE/Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+*.sublime-project
+*.sublime-workspace
+.atom/
+
+# Logs and debugging
+*.log
+*.out
+*.err
+debug.txt
+error.log
+crash.log
+
+# Temporary/Cache files
+*.cache
+*.pid
+*.seed
+*.pid.lock
+.npm
+.nyc_output
+.grunt
+bower_components
+.lock-wscript
+.wafpickle-*
+.node_repl_history
+*.tgz
+.yarn-integrity
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Build/Distribution
+dist/
+build/
+out/
+target/
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# Test coverage
+coverage/
+*.lcov
+.nyc_output/
+
+# Runtime/Process files
+*.pid
+*.seed
+*.pid.lock
+
+# Backup files
+*.bak
+*.backup
+*.orig
+*.save
+*~
+
+# Compiled files
+*.o
+*.a
+*.so
+*.dll
+*.exe
+*.class
+*.pyc
+*.pyo
+__pycache__/
+
+# Personal/Local files
+.env.local
+.env.*.local
+config.local.*
+settings.local.*
+*.local
